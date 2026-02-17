@@ -1,11 +1,7 @@
-# Core runtime dependencies (from pyproject [project.dependencies])
+# Runtime dependencies installed by `pip install -e .` (from pyproject [project.dependencies])
 google-adk>=1.25.0
 greenlet>=3.1.1
-
-# Optional Feishu channel dependencies (from [project.optional-dependencies.feishu])
 lark-oapi>=1.4.15
 python-socks>=2.5.3
-
-# Optional OpenAI provider dependencies (from [project.optional-dependencies.openai])
 litellm>=1.75.5,<1.80.17
 openai>=1.100.2

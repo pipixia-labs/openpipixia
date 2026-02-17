@@ -57,11 +57,7 @@ cd sentientagent_v2
 pip install -e .
 ```
 
-If you see `the greenlet library is required to use this function`, install:
-
-```bash
-pip install greenlet
-```
+This installs all runtime dependencies (Google ADK, Feishu SDK, LiteLLM/OpenAI).
 
 ## Onboard (Recommended)
 
@@ -179,28 +175,10 @@ Use env vars only for temporary overrides, for example:
 - `SENTIENTAGENT_V2_EXEC_ALLOWLIST`
 - `SENTIENTAGENT_V2_DEBUG`
 
-## Feishu Dependency
+## Feishu Note
 
-Install Feishu SDK only when needed:
-
-```bash
-pip install -e '.[feishu]'
-```
-
-If your environment uses a SOCKS proxy and you see
-`python-socks is required to use a SOCKS proxy`, install:
-
-```bash
-pip install python-socks
-```
-
-## OpenAI Provider Dependency
-
-Install optional dependencies when `providers.openai.enabled=true`:
-
-```bash
-pip install -e '.[openai]'
-```
+If your environment uses a SOCKS proxy, Feishu websocket requires `python-socks`.
+It is already included in default dependencies.
 
 ## Config Example
 

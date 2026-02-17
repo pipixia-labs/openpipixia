@@ -6,14 +6,8 @@ requires-python = ">=3.11"
 dependencies = [
     "google-adk>=1.25.0",
     "greenlet>=3.1.1",
-]
-
-[project.optional-dependencies]
-feishu = [
     "lark-oapi>=1.4.15",
     "python-socks>=2.5.3",
-]
-openai = [
     "litellm>=1.75.5,<1.80.17",
     "openai>=1.100.2",
 ]
