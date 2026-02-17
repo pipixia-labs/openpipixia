@@ -56,6 +56,12 @@ cd sentientagent_v2
 pip install -e .
 ```
 
+If you see `the greenlet library is required to use this function`, install:
+
+```bash
+pip install greenlet
+```
+
 ## Onboard (Recommended)
 
 Initialize local config and workspace:

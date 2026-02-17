@@ -5,6 +5,7 @@ description = "A lightweight skills-first agent built with Google ADK"
 requires-python = ">=3.11"
 dependencies = [
     "google-adk>=1.25.0",
+    "greenlet>=3.1.1",
 ]
 
 [project.optional-dependencies]
