@@ -81,6 +81,37 @@ def _extract_post_text(content_json: dict[str, Any]) -> str:
     return ""
 
 
+def _iter_post_lang_payloads(content_json: dict[str, Any]) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    if isinstance(content_json.get("content"), list):
+        payloads.append(content_json)
+    for lang_key in ("zh_cn", "en_us", "ja_jp"):
+        lang = content_json.get(lang_key)
+        if isinstance(lang, dict) and isinstance(lang.get("content"), list):
+            payloads.append(lang)
+    return payloads
+
+
+def _extract_post_image_keys(content_json: dict[str, Any]) -> list[str]:
+    keys: list[str] = []
+    for lang in _iter_post_lang_payloads(content_json):
+        blocks = lang.get("content", [])
+        if not isinstance(blocks, list):
+            continue
+        for block in blocks:
+            if not isinstance(block, list):
+                continue
+            for el in block:
+                if not isinstance(el, dict):
+                    continue
+                if el.get("tag") not in {"img", "image"}:
+                    continue
+                key = str(el.get("image_key", "")).strip()
+                if key:
+                    keys.append(key)
+    return list(dict.fromkeys(keys))
+
+
 def _workspace_root() -> Path:
     workspace = os.getenv("SENTIENTAGENT_V2_WORKSPACE", "").strip()
     if workspace:
@@ -91,6 +122,19 @@ def _workspace_root() -> Path:
 def _safe_filename(name: str) -> str:
     cleaned = re.sub(r"[^\w.\- ]+", "_", (name or "").strip()).strip(" .")
     return cleaned or "attachment.bin"
+
+
+def _suffix_from_content_type(content_type: str, default_suffix: str) -> str:
+    normalized = (content_type or "").split(";", 1)[0].strip().lower()
+    mapping = {
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/jpg": ".jpg",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+        "application/pdf": ".pdf",
+    }
+    return mapping.get(normalized, default_suffix)
 
 
 class FeishuChannel(BaseChannel):
@@ -275,24 +319,30 @@ class FeishuChannel(BaseChannel):
             return
         self._send_text_sync(msg)
 
-    def _download_file_sync(self, file_key: str, file_name: str, message_id: str) -> Path:
+    def _download_resource_sync(
+        self,
+        *,
+        resource_key: str,
+        message_id: str,
+        resource_type: str,
+        suggested_name: str,
+        default_suffix: str,
+        allow_legacy_file_api: bool,
+    ) -> Path:
         if not self._client:
             raise RuntimeError("Feishu client is unavailable")
 
-        # For message attachments uploaded by users, the message resource API is
-        # the correct endpoint. `im.v1.file.get` is for app-owned resources and
-        # may return code=234008 (app is not the resource sender).
         if GetMessageResourceRequest is not None:
             request = (
                 GetMessageResourceRequest.builder()
-                .type("file")
+                .type(resource_type)
                 .message_id(message_id)
-                .file_key(file_key)
+                .file_key(resource_key)
                 .build()
             )
             response = self._client.im.v1.message_resource.get(request)
-        elif GetFileRequest is not None:
-            request = GetFileRequest.builder().file_key(file_key).build()
+        elif allow_legacy_file_api and GetFileRequest is not None:
+            request = GetFileRequest.builder().file_key(resource_key).build()
             response = self._client.im.v1.file.get(request)
         else:
             raise RuntimeError("Feishu file download APIs are unavailable in current SDK/runtime")
@@ -303,7 +353,7 @@ class FeishuChannel(BaseChannel):
             message = getattr(response, "msg", "")
             log_id_fn = getattr(response, "get_log_id", None)
             log_id = log_id_fn() if callable(log_id_fn) else ""
-            raise RuntimeError(f"Feishu file download failed: code={code}, msg={message}, log_id={log_id}")
+            raise RuntimeError(f"Feishu resource download failed: code={code}, msg={message}, log_id={log_id}")
 
         file_obj = getattr(response, "file", None)
         if file_obj is None:
@@ -317,20 +367,54 @@ class FeishuChannel(BaseChannel):
         elif isinstance(data, bytes):
             payload = data
         else:
-            raise RuntimeError(f"Unexpected file payload type: {type(data)!r}")
+            raise RuntimeError(f"Unexpected resource payload type: {type(data)!r}")
 
-        fallback_name = getattr(response, "file_name", "") or file_name or f"{file_key}.bin"
-        safe_name = _safe_filename(str(fallback_name))
-        save_dir = _workspace_root() / "inbox" / "feishu"
+        raw_headers = getattr(getattr(response, "raw", None), "headers", None)
+        content_type = ""
+        if raw_headers is not None:
+            content_type = str(raw_headers.get("Content-Type", "")).strip()
+
+        fallback_name = str(getattr(response, "file_name", "") or suggested_name).strip()
+        suffix = _suffix_from_content_type(content_type, default_suffix)
+        if fallback_name:
+            safe_name = _safe_filename(fallback_name)
+            if not Path(safe_name).suffix:
+                safe_name = f"{safe_name}{suffix}"
+        else:
+            safe_name = _safe_filename(f"{resource_key}{suffix}")
+
+        save_dir = _workspace_root() / "inbox" / self.name
         save_dir.mkdir(parents=True, exist_ok=True)
         stem = Path(safe_name).stem or "attachment"
-        suffix = Path(safe_name).suffix
+        suffix = Path(safe_name).suffix or default_suffix
         target = save_dir / safe_name
         if target.exists():
-            token = message_id or file_key
+            token = message_id or resource_key
             target = save_dir / f"{stem}-{token[:8]}{suffix}"
         target.write_bytes(payload)
         return target.resolve()
+
+    def _download_file_sync(self, file_key: str, file_name: str, message_id: str) -> Path:
+        # For message attachments uploaded by users, message_resource is the
+        # correct endpoint. The legacy file endpoint is only a fallback.
+        return self._download_resource_sync(
+            resource_key=file_key,
+            message_id=message_id,
+            resource_type="file",
+            suggested_name=file_name or f"{file_key}.bin",
+            default_suffix=".bin",
+            allow_legacy_file_api=True,
+        )
+
+    def _download_image_sync(self, image_key: str, message_id: str) -> Path:
+        return self._download_resource_sync(
+            resource_key=image_key,
+            message_id=message_id,
+            resource_type="image",
+            suggested_name=f"{image_key}.png",
+            default_suffix=".png",
+            allow_legacy_file_api=False,
+        )
 
     async def send(self, msg) -> None:
         loop = asyncio.get_running_loop()
@@ -402,10 +486,78 @@ class FeishuChannel(BaseChannel):
                 except json.JSONDecodeError:
                     content = raw_content
             elif msg_type == "post":
+                post_payload: dict[str, Any] = {}
                 try:
-                    content = _extract_post_text(json.loads(raw_content))
+                    parsed = json.loads(raw_content)
+                    if isinstance(parsed, dict):
+                        post_payload = parsed
                 except Exception:
-                    content = ""
+                    post_payload = {}
+                text_content = _extract_post_text(post_payload) if post_payload else ""
+                image_keys = _extract_post_image_keys(post_payload) if post_payload else []
+                image_paths: list[str] = []
+                image_errors: list[str] = []
+                if image_keys:
+                    metadata["image_keys"] = image_keys
+                    loop = asyncio.get_running_loop()
+                    for image_key in image_keys:
+                        try:
+                            local_path = await loop.run_in_executor(
+                                None,
+                                self._download_image_sync,
+                                image_key,
+                                message_id,
+                            )
+                            image_paths.append(str(local_path))
+                        except Exception as exc:
+                            logger.exception(
+                                "Failed downloading Feishu image in post (message_id=%s image_key=%s)",
+                                message_id,
+                                image_key,
+                            )
+                            image_errors.append(f"{image_key}: {exc}")
+                if image_paths:
+                    metadata["image_paths"] = image_paths
+                if image_errors:
+                    metadata["image_download_errors"] = image_errors
+                parts: list[str] = []
+                if text_content:
+                    parts.append(text_content)
+                if image_paths:
+                    parts.append("Received images:\n" + "\n".join(image_paths))
+                if image_errors:
+                    parts.append("Failed downloading images:\n" + "\n".join(image_errors))
+                content = "\n\n".join(parts).strip()
+            elif msg_type == "image":
+                image_key = ""
+                try:
+                    payload = json.loads(raw_content)
+                    if isinstance(payload, dict):
+                        image_key = str(payload.get("image_key", "")).strip()
+                except Exception:
+                    pass
+                metadata["image_key"] = image_key
+                if image_key:
+                    try:
+                        loop = asyncio.get_running_loop()
+                        local_path = await loop.run_in_executor(
+                            None,
+                            self._download_image_sync,
+                            image_key,
+                            message_id,
+                        )
+                        metadata["local_path"] = str(local_path)
+                        content = f"Received image: {local_path}"
+                    except Exception as exc:
+                        logger.exception(
+                            "Failed downloading Feishu image (message_id=%s image_key=%s)",
+                            message_id,
+                            image_key,
+                        )
+                        metadata["download_error"] = str(exc)
+                        content = f"Received image but download failed: {image_key}"
+                else:
+                    content = "Received an image message without image_key."
             elif msg_type == "file":
                 file_key = ""
                 file_name = ""

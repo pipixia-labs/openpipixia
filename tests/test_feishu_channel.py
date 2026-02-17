@@ -102,6 +102,73 @@ class FeishuChannelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(inbound.metadata.get("file_key"), "file_v2_123")
         self.assertEqual(inbound.metadata.get("local_path"), str(saved))
 
+    async def test_on_message_downloads_image_and_forwards_workspace_path(self) -> None:
+        bus = MessageBus()
+        channel = FeishuChannel(bus=bus, app_id="app-id", app_secret="app-secret")
+        data = pytypes.SimpleNamespace(
+            event=pytypes.SimpleNamespace(
+                message=pytypes.SimpleNamespace(
+                    message_id="om_img_1",
+                    chat_id="oc_group_4",
+                    chat_type="group",
+                    message_type="image",
+                    content='{"image_key":"img_v2_001"}',
+                ),
+                sender=pytypes.SimpleNamespace(
+                    sender_type="user",
+                    sender_id=pytypes.SimpleNamespace(open_id="ou_user_3"),
+                ),
+            )
+        )
+        saved = Path("/tmp/inbox/feishu/photo.png")
+
+        with (
+            patch.object(channel, "_add_reaction", new=AsyncMock()),
+            patch.object(channel, "_download_image_sync", return_value=saved) as download_image,
+        ):
+            await channel._on_message(data)
+
+        download_image.assert_called_once_with("img_v2_001", "om_img_1")
+        inbound = await asyncio.wait_for(bus.consume_inbound(), timeout=0.2)
+        self.assertIn(str(saved), inbound.content)
+        self.assertEqual(inbound.metadata.get("msg_type"), "image")
+        self.assertEqual(inbound.metadata.get("image_key"), "img_v2_001")
+        self.assertEqual(inbound.metadata.get("local_path"), str(saved))
+
+    async def test_on_post_message_with_text_and_image_forwards_both(self) -> None:
+        bus = MessageBus()
+        channel = FeishuChannel(bus=bus, app_id="app-id", app_secret="app-secret")
+        data = pytypes.SimpleNamespace(
+            event=pytypes.SimpleNamespace(
+                message=pytypes.SimpleNamespace(
+                    message_id="om_post_1",
+                    chat_id="oc_group_5",
+                    chat_type="group",
+                    message_type="post",
+                    content='{"zh_cn":{"title":"","content":[[{"tag":"text","text":"please check this image"},{"tag":"img","image_key":"img_v2_post_1"}]]}}',
+                ),
+                sender=pytypes.SimpleNamespace(
+                    sender_type="user",
+                    sender_id=pytypes.SimpleNamespace(open_id="ou_user_4"),
+                ),
+            )
+        )
+        saved = Path("/tmp/inbox/feishu/post.png")
+
+        with (
+            patch.object(channel, "_add_reaction", new=AsyncMock()),
+            patch.object(channel, "_download_image_sync", return_value=saved) as download_image,
+        ):
+            await channel._on_message(data)
+
+        download_image.assert_called_once_with("img_v2_post_1", "om_post_1")
+        inbound = await asyncio.wait_for(bus.consume_inbound(), timeout=0.2)
+        self.assertIn("please check this image", inbound.content)
+        self.assertIn(str(saved), inbound.content)
+        self.assertEqual(inbound.metadata.get("msg_type"), "post")
+        self.assertEqual(inbound.metadata.get("image_keys"), ["img_v2_post_1"])
+        self.assertEqual(inbound.metadata.get("image_paths"), [str(saved)])
+
     async def test_stop_handles_ws_client_without_stop_method(self) -> None:
         bus = MessageBus()
         channel = FeishuChannel(bus=bus, app_id="app-id", app_secret="app-secret")
