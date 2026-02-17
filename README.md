@@ -165,13 +165,12 @@ Configure these fields in `config.json`:
 - `providers.google.enabled / apiKey / model`
 - `channels.local.enabled`, `channels.feishu.enabled`, and `channels.feishu.*`
 - `web.enabled`, `web.search.enabled / provider / apiKey / maxResults`
-- `security.strictMode / restrictToWorkspace / allowExec / allowNetwork / execAllowlist`
+- `security.restrictToWorkspace / allowExec / allowNetwork / execAllowlist`
 
 Use env vars only for temporary overrides, for example:
 
 - `GOOGLE_API_KEY`
 - `SENTIENTAGENT_V2_CHANNELS`
-- `SENTIENTAGENT_V2_STRICT_MODE`
 - `SENTIENTAGENT_V2_EXEC_ALLOWLIST`
 - `SENTIENTAGENT_V2_DEBUG`
 
@@ -236,7 +235,6 @@ pip install python-socks
     }
   },
   "security": {
-    "strictMode": false,
     "restrictToWorkspace": false,
     "allowExec": true,
     "allowNetwork": true,
@@ -255,7 +253,6 @@ pip install python-socks
 
 | Field | Default | Meaning |
 |-------|---------|---------|
-| `strictMode` | `false` | Security baseline switch. When `true`, workspace restriction is forced on, and `allowExec` / `allowNetwork` default to `false` unless explicitly set. |
 | `restrictToWorkspace` | `false` | Restricts file tools (`read_file`, `write_file`, `edit_file`, `list_dir`) and shell path arguments to `SENTIENTAGENT_V2_WORKSPACE`. |
 | `allowExec` | `true` | Enables/disables the `exec` tool entirely. If `false`, all `exec` calls are blocked. |
 | `allowNetwork` | `true` | Enables/disables network tools (`web_search`, `web_fetch`). If `false`, network calls are blocked. |
@@ -263,7 +260,6 @@ pip install python-socks
 
 Behavior notes:
 
-- `strictMode=true` does not hard-disable `allowExec`/`allowNetwork`; it changes their default to disabled. You can still re-enable them explicitly in config.
 - `execAllowlist` checks command name only (the first argv token after parsing).
 - `exec` runs with `shell=False` for a safer default (no shell piping/chaining semantics by default).
 

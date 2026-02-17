@@ -59,8 +59,8 @@ class ToolsTests(unittest.TestCase):
         out = exec_command("echo hello")
         self.assertIn("allowlist", out.lower())
 
-    def test_exec_tool_is_disabled_in_strict_mode_by_default(self) -> None:
-        os.environ["SENTIENTAGENT_V2_STRICT_MODE"] = "1"
+    def test_exec_tool_is_disabled_when_allow_exec_is_off(self) -> None:
+        os.environ["SENTIENTAGENT_V2_ALLOW_EXEC"] = "0"
         out = exec_command("echo hello")
         self.assertIn("disabled by security policy", out.lower())
 

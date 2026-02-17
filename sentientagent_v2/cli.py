@@ -90,7 +90,6 @@ def _cmd_doctor() -> int:
     )
     print(
         "Security: "
-        f"strict={security_policy.strict_mode}, "
         f"restrict_to_workspace={security_policy.restrict_to_workspace}, "
         f"allow_exec={security_policy.allow_exec}, "
         f"allow_network={security_policy.allow_network}, "

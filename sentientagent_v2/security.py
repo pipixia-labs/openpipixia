@@ -16,7 +16,6 @@ class SecurityPolicy:
 
     workspace_root: Path
     restrict_to_workspace: bool
-    strict_mode: bool
     allow_exec: bool
     allow_network: bool
     exec_allowlist: tuple[str, ...]
@@ -79,16 +78,14 @@ def _workspace_from_env() -> Path:
 
 def load_security_policy() -> SecurityPolicy:
     """Load security policy from runtime environment."""
-    strict_mode = env_enabled("SENTIENTAGENT_V2_STRICT_MODE", default=False)
-    restrict_to_workspace = env_enabled("SENTIENTAGENT_V2_RESTRICT_TO_WORKSPACE", default=False) or strict_mode
-    allow_exec = env_enabled("SENTIENTAGENT_V2_ALLOW_EXEC", default=not strict_mode)
-    allow_network = env_enabled("SENTIENTAGENT_V2_ALLOW_NETWORK", default=not strict_mode)
+    restrict_to_workspace = env_enabled("SENTIENTAGENT_V2_RESTRICT_TO_WORKSPACE", default=False)
+    allow_exec = env_enabled("SENTIENTAGENT_V2_ALLOW_EXEC", default=True)
+    allow_network = env_enabled("SENTIENTAGENT_V2_ALLOW_NETWORK", default=True)
     exec_allowlist = _parse_allowlist(os.getenv("SENTIENTAGENT_V2_EXEC_ALLOWLIST", ""))
 
     return SecurityPolicy(
         workspace_root=_workspace_from_env(),
         restrict_to_workspace=restrict_to_workspace,
-        strict_mode=strict_mode,
         allow_exec=allow_exec,
         allow_network=allow_network,
         exec_allowlist=exec_allowlist,

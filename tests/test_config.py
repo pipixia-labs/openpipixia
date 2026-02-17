@@ -32,7 +32,6 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(cfg["providers"]["google"]["enabled"])
         self.assertTrue(cfg["web"]["search"]["enabled"])
         self.assertEqual(cfg["session"]["dbUrl"], "")
-        self.assertFalse(cfg["security"]["strictMode"])
         self.assertFalse(cfg["security"]["restrictToWorkspace"])
         self.assertTrue(cfg["security"]["allowExec"])
         self.assertTrue(cfg["security"]["allowNetwork"])
@@ -79,7 +78,7 @@ class ConfigTests(unittest.TestCase):
             cfg["session"]["dbUrl"] = "sqlite+aiosqlite:////tmp/sessions.db"
             cfg["providers"]["google"]["apiKey"] = "google-key"
             cfg["web"]["search"]["enabled"] = False
-            cfg["security"]["strictMode"] = True
+            cfg["security"]["restrictToWorkspace"] = True
             cfg["security"]["allowExec"] = False
             cfg["security"]["allowNetwork"] = False
             cfg["security"]["execAllowlist"] = ["python", "ls", "python"]
@@ -91,7 +90,6 @@ class ConfigTests(unittest.TestCase):
             os.environ.pop("GOOGLE_API_KEY", None)
             os.environ.pop("BRAVE_API_KEY", None)
             os.environ.pop("SENTIENTAGENT_V2_WEB_SEARCH_ENABLED", None)
-            os.environ.pop("SENTIENTAGENT_V2_STRICT_MODE", None)
             os.environ.pop("SENTIENTAGENT_V2_RESTRICT_TO_WORKSPACE", None)
             os.environ.pop("SENTIENTAGENT_V2_ALLOW_EXEC", None)
             os.environ.pop("SENTIENTAGENT_V2_ALLOW_NETWORK", None)
@@ -104,7 +102,6 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(os.environ["SENTIENTAGENT_V2_SESSION_DB_URL"], "sqlite+aiosqlite:////tmp/sessions.db")
         self.assertEqual(os.environ["GOOGLE_API_KEY"], "google-key")
         self.assertEqual(os.environ["SENTIENTAGENT_V2_WEB_SEARCH_ENABLED"], "0")
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_STRICT_MODE"], "1")
         self.assertEqual(os.environ["SENTIENTAGENT_V2_RESTRICT_TO_WORKSPACE"], "1")
         self.assertEqual(os.environ["SENTIENTAGENT_V2_ALLOW_EXEC"], "0")
         self.assertEqual(os.environ["SENTIENTAGENT_V2_ALLOW_NETWORK"], "0")

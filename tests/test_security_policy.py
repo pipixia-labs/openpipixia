@@ -23,19 +23,19 @@ class SecurityPolicyTests(unittest.TestCase):
             os.environ["SENTIENTAGENT_V2_WORKSPACE"] = tmp
             policy = load_security_policy()
 
-        self.assertFalse(policy.strict_mode)
         self.assertFalse(policy.restrict_to_workspace)
         self.assertTrue(policy.allow_exec)
         self.assertTrue(policy.allow_network)
         self.assertEqual(policy.exec_allowlist, ())
 
-    def test_strict_mode_forces_restriction_and_disables_exec_network_by_default(self) -> None:
+    def test_policy_reads_explicit_flags(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             os.environ["SENTIENTAGENT_V2_WORKSPACE"] = tmp
-            os.environ["SENTIENTAGENT_V2_STRICT_MODE"] = "1"
+            os.environ["SENTIENTAGENT_V2_RESTRICT_TO_WORKSPACE"] = "1"
+            os.environ["SENTIENTAGENT_V2_ALLOW_EXEC"] = "0"
+            os.environ["SENTIENTAGENT_V2_ALLOW_NETWORK"] = "0"
             policy = load_security_policy()
 
-        self.assertTrue(policy.strict_mode)
         self.assertTrue(policy.restrict_to_workspace)
         self.assertFalse(policy.allow_exec)
         self.assertFalse(policy.allow_network)
@@ -58,7 +58,6 @@ class PathGuardTests(unittest.TestCase):
             policy = SecurityPolicy(
                 workspace_root=workspace,
                 restrict_to_workspace=True,
-                strict_mode=False,
                 allow_exec=True,
                 allow_network=True,
                 exec_allowlist=(),
@@ -74,7 +73,6 @@ class PathGuardTests(unittest.TestCase):
             policy = SecurityPolicy(
                 workspace_root=workspace,
                 restrict_to_workspace=True,
-                strict_mode=False,
                 allow_exec=True,
                 allow_network=True,
                 exec_allowlist=(),
