@@ -65,7 +65,6 @@ def default_config() -> dict[str, Any]:
             },
         },
         "session": {
-            "backend": "memory",
             "dbUrl": "",
         },
         "channels": {
@@ -224,7 +223,6 @@ def config_to_env(config: dict[str, Any]) -> dict[str, str]:
         "SENTIENTAGENT_V2_PROVIDER_ENABLED": "1" if provider_enabled else "0",
         "SENTIENTAGENT_V2_WORKSPACE": str(agent.get("workspace", "")).strip(),
         "SENTIENTAGENT_V2_BUILTIN_SKILLS_DIR": str(agent.get("builtinSkillsDir", "")).strip(),
-        "SENTIENTAGENT_V2_SESSION_BACKEND": str(session.get("backend", "")).strip().lower(),
         "SENTIENTAGENT_V2_SESSION_DB_URL": str(session.get("dbUrl", "")).strip(),
         "SENTIENTAGENT_V2_CHANNELS": _resolve_enabled_channels(channels if isinstance(channels, dict) else {}),
         "FEISHU_APP_ID": str(feishu.get("appId", "")).strip(),

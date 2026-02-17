@@ -24,7 +24,7 @@ from .config import (
 )
 from .runtime.adk_utils import extract_text
 from .runtime.runner_factory import create_runner
-from .runtime.session_service import load_session_backend_config
+from .runtime.session_service import load_session_config
 from .skills import get_registry
 
 
@@ -71,7 +71,7 @@ def _cmd_doctor() -> int:
     config_path = get_config_path()
     registry = get_registry()
     skills_count = len(registry.list_skills())
-    backend = load_session_backend_config()
+    session_cfg = load_session_config()
     configured_channels = parse_enabled_channels(None)
     channel_issues = validate_channel_setup(configured_channels)
     issues.extend(channel_issues)
@@ -84,7 +84,7 @@ def _cmd_doctor() -> int:
     print(f"Workspace: {registry.workspace}")
     print(f"Detected skills: {skills_count}")
     print(f"Provider: {provider_name} (enabled={provider_enabled})")
-    print(f"Session backend: {backend.backend}" + (f" ({backend.db_url})" if backend.db_url else ""))
+    print(f"Session storage: sqlite ({session_cfg.db_url})")
     print(f"Configured channels: {', '.join(configured_channels) if configured_channels else '(none)'}")
     print(
         "Web search: "

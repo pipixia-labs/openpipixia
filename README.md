@@ -202,7 +202,6 @@ pip install python-socks
     }
   },
   "session": {
-    "backend": "memory",
     "dbUrl": ""
   },
   "channels": {
@@ -229,6 +228,9 @@ pip install python-socks
   "debug": false
 }
 ```
+
+`session` 固定使用 SQLite。`dbUrl` 留空时默认使用  
+`~/.sentientagent_v2/database/sessions.db`。
 
 ## Acknowledgements
 

@@ -1,4 +1,4 @@
-"""Session service factory for ADK runner."""
+"""SQLite session service factory for ADK runner."""
 
 from __future__ import annotations
 
@@ -7,43 +7,28 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from google.adk.sessions import DatabaseSessionService, InMemorySessionService
+from google.adk.sessions import DatabaseSessionService
 
 
 @dataclass(slots=True)
-class SessionBackendConfig:
-    """Runtime session backend configuration."""
+class SessionConfig:
+    """Runtime session storage configuration (SQLite only)."""
 
-    backend: str
-    db_url: str | None = None
-
-
-def load_session_backend_config() -> SessionBackendConfig:
-    backend = os.getenv("SENTIENTAGENT_V2_SESSION_BACKEND", "memory").strip().lower()
-    db_url = os.getenv("SENTIENTAGENT_V2_SESSION_DB_URL", "").strip() or None
-    return SessionBackendConfig(backend=backend, db_url=db_url)
+    db_url: str
 
 
 def _default_sqlite_db_url() -> str:
-    workspace_env = os.getenv("SENTIENTAGENT_V2_WORKSPACE")
-    workspace = Path(workspace_env).expanduser().resolve() if workspace_env else Path.cwd().resolve()
-    db_path = workspace / ".sentientagent_v2" / "sessions.db"
+    db_path = Path.home() / ".sentientagent_v2" / "database" / "sessions.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     return f"sqlite+aiosqlite:///{db_path}"
 
 
-def create_session_service(config: SessionBackendConfig | None = None) -> Any:
-    """Create ADK session service using env-configured backend."""
-    cfg = config or load_session_backend_config()
+def load_session_config() -> SessionConfig:
+    db_url = os.getenv("SENTIENTAGENT_V2_SESSION_DB_URL", "").strip() or _default_sqlite_db_url()
+    return SessionConfig(db_url=db_url)
 
-    if cfg.backend in {"memory", "inmemory", "in-memory"}:
-        return InMemorySessionService()
 
-    if cfg.backend in {"sqlite", "db", "database"}:
-        db_url = cfg.db_url or _default_sqlite_db_url()
-        return DatabaseSessionService(db_url)
-
-    raise ValueError(
-        "Unsupported session backend. Use SENTIENTAGENT_V2_SESSION_BACKEND="
-        "'memory' or 'sqlite'."
-    )
+def create_session_service(config: SessionConfig | None = None) -> Any:
+    """Create ADK SQLite session service."""
+    cfg = config or load_session_config()
+    return DatabaseSessionService(cfg.db_url)
