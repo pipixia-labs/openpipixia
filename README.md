@@ -139,6 +139,9 @@ then run:
 sentientagent_v2 gateway
 ```
 
+When users send file attachments in Feishu (for example PDF), `sentientagent_v2` downloads
+them to `SENTIENTAGENT_V2_WORKSPACE/inbox/feishu/` and forwards the local file path to the agent.
+
 ## Classic Usage Examples
 
 ```bash

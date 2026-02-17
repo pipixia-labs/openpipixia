@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import types as pytypes
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from sentientagent_v2.bus.events import OutboundMessage
@@ -67,6 +68,39 @@ class FeishuChannelTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(asyncio.TimeoutError):
             await asyncio.wait_for(bus.consume_inbound(), timeout=0.05)
+
+    async def test_on_message_downloads_file_and_forwards_workspace_path(self) -> None:
+        bus = MessageBus()
+        channel = FeishuChannel(bus=bus, app_id="app-id", app_secret="app-secret")
+        data = pytypes.SimpleNamespace(
+            event=pytypes.SimpleNamespace(
+                message=pytypes.SimpleNamespace(
+                    message_id="om_file_1",
+                    chat_id="oc_group_3",
+                    chat_type="group",
+                    message_type="file",
+                    content='{"file_key":"file_v2_123","file_name":"report.pdf"}',
+                ),
+                sender=pytypes.SimpleNamespace(
+                    sender_type="user",
+                    sender_id=pytypes.SimpleNamespace(open_id="ou_user_2"),
+                ),
+            )
+        )
+        saved = Path("/tmp/inbox/feishu/report.pdf")
+
+        with (
+            patch.object(channel, "_add_reaction", new=AsyncMock()),
+            patch.object(channel, "_download_file_sync", return_value=saved) as download_file,
+        ):
+            await channel._on_message(data)
+
+        download_file.assert_called_once_with("file_v2_123", "report.pdf", "om_file_1")
+        inbound = await asyncio.wait_for(bus.consume_inbound(), timeout=0.2)
+        self.assertIn(str(saved), inbound.content)
+        self.assertEqual(inbound.metadata.get("msg_type"), "file")
+        self.assertEqual(inbound.metadata.get("file_key"), "file_v2_123")
+        self.assertEqual(inbound.metadata.get("local_path"), str(saved))
 
     async def test_stop_handles_ws_client_without_stop_method(self) -> None:
         bus = MessageBus()

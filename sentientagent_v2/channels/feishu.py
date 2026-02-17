@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import re
 import threading
 from pathlib import Path
 from typing import Any
@@ -20,6 +22,7 @@ try:
         CreateImageRequestBody,
         CreateMessageRequest,
         CreateMessageRequestBody,
+        GetFileRequest,
         P2ImMessageReceiveV1,
     )
 
@@ -30,6 +33,7 @@ except ImportError:  # pragma: no cover - environment dependent
     CreateImageRequestBody = None
     CreateMessageRequest = None
     CreateMessageRequestBody = None
+    GetFileRequest = None
     P2ImMessageReceiveV1 = None
     FEISHU_AVAILABLE = False
 
@@ -73,6 +77,18 @@ def _extract_post_text(content_json: dict[str, Any]) -> str:
             if parts:
                 return " ".join(parts).strip()
     return ""
+
+
+def _workspace_root() -> Path:
+    workspace = os.getenv("SENTIENTAGENT_V2_WORKSPACE", "").strip()
+    if workspace:
+        return Path(workspace).expanduser().resolve()
+    return Path.cwd().resolve()
+
+
+def _safe_filename(name: str) -> str:
+    cleaned = re.sub(r"[^\w.\- ]+", "_", (name or "").strip()).strip(" .")
+    return cleaned or "attachment.bin"
 
 
 class FeishuChannel(BaseChannel):
@@ -257,6 +273,47 @@ class FeishuChannel(BaseChannel):
             return
         self._send_text_sync(msg)
 
+    def _download_file_sync(self, file_key: str, file_name: str, message_id: str) -> Path:
+        if not self._client or GetFileRequest is None:
+            raise RuntimeError("Feishu file API is unavailable in current SDK/runtime")
+
+        request = GetFileRequest.builder().file_key(file_key).build()
+        response = self._client.im.v1.file.get(request)
+        success_fn = getattr(response, "success", None)
+        if callable(success_fn) and not success_fn():
+            code = getattr(response, "code", "")
+            message = getattr(response, "msg", "")
+            log_id_fn = getattr(response, "get_log_id", None)
+            log_id = log_id_fn() if callable(log_id_fn) else ""
+            raise RuntimeError(f"Feishu file download failed: code={code}, msg={message}, log_id={log_id}")
+
+        file_obj = getattr(response, "file", None)
+        if file_obj is None:
+            raise RuntimeError("Feishu file download returned empty payload")
+        if hasattr(file_obj, "read"):
+            data = file_obj.read()
+        else:
+            data = file_obj
+        if isinstance(data, str):
+            payload = data.encode("utf-8")
+        elif isinstance(data, bytes):
+            payload = data
+        else:
+            raise RuntimeError(f"Unexpected file payload type: {type(data)!r}")
+
+        fallback_name = getattr(response, "file_name", "") or file_name or f"{file_key}.bin"
+        safe_name = _safe_filename(str(fallback_name))
+        save_dir = _workspace_root() / "inbox" / "feishu"
+        save_dir.mkdir(parents=True, exist_ok=True)
+        stem = Path(safe_name).stem or "attachment"
+        suffix = Path(safe_name).suffix
+        target = save_dir / safe_name
+        if target.exists():
+            token = message_id or file_key
+            target = save_dir / f"{stem}-{token[:8]}{suffix}"
+        target.write_bytes(payload)
+        return target.resolve()
+
     async def send(self, msg) -> None:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._send_sync, msg)
@@ -315,6 +372,11 @@ class FeishuChannel(BaseChannel):
             chat_type = getattr(message, "chat_type", "")
             msg_type = getattr(message, "message_type", "")
             raw_content = getattr(message, "content", "") or ""
+            metadata = {
+                "msg_type": msg_type,
+                "chat_type": chat_type,
+                "message_id": message_id,
+            }
 
             if msg_type == "text":
                 try:
@@ -326,6 +388,41 @@ class FeishuChannel(BaseChannel):
                     content = _extract_post_text(json.loads(raw_content))
                 except Exception:
                     content = ""
+            elif msg_type == "file":
+                file_key = ""
+                file_name = ""
+                try:
+                    payload = json.loads(raw_content)
+                    if isinstance(payload, dict):
+                        file_key = str(payload.get("file_key", "")).strip()
+                        file_name = str(payload.get("file_name", "")).strip()
+                except Exception:
+                    pass
+                metadata["file_key"] = file_key
+                metadata["file_name"] = file_name
+                if file_key:
+                    try:
+                        loop = asyncio.get_running_loop()
+                        local_path = await loop.run_in_executor(
+                            None,
+                            self._download_file_sync,
+                            file_key,
+                            file_name,
+                            message_id,
+                        )
+                        metadata["local_path"] = str(local_path)
+                        content = f"Received file: {local_path}"
+                    except Exception as exc:
+                        logger.exception(
+                            "Failed downloading Feishu file (message_id=%s file_key=%s)",
+                            message_id,
+                            file_key,
+                        )
+                        metadata["download_error"] = str(exc)
+                        name_hint = file_name or file_key
+                        content = f"Received file but download failed: {name_hint}"
+                else:
+                    content = "Received a file message without file_key."
             else:
                 content = ""
 
@@ -339,11 +436,7 @@ class FeishuChannel(BaseChannel):
                 sender_id=sender_id,
                 chat_id=target_chat_id,
                 content=content,
-                metadata={
-                    "msg_type": msg_type,
-                    "chat_type": chat_type,
-                    "message_id": message_id,
-                },
+                metadata=metadata,
             )
         except Exception:
             logger.exception("Failed handling Feishu inbound message")
