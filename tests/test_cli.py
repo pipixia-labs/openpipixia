@@ -7,6 +7,7 @@ import os
 import tempfile
 import types as pytypes
 import unittest
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -43,6 +44,16 @@ class CLITests(unittest.TestCase):
                     cli.main(["doctor"])
                 self.assertEqual(ctx.exception.code, 0)
                 mocked_bootstrap.assert_called_once()
+
+    def test_doctor_mode_passes_json_and_verbose_flags(self) -> None:
+        from sentientagent_v2 import cli
+
+        with patch.object(cli, "bootstrap_env_from_config"):
+            with patch.object(cli, "_cmd_doctor", return_value=0) as mocked_doctor:
+                with self.assertRaises(SystemExit) as ctx:
+                    cli.main(["doctor", "--json", "--verbose"])
+                self.assertEqual(ctx.exception.code, 0)
+                mocked_doctor.assert_called_once_with(output_json=True, verbose=True)
 
     def test_cmd_doctor_includes_mcp_health_failures(self) -> None:
         from sentientagent_v2 import cli
@@ -93,12 +104,50 @@ class CLITests(unittest.TestCase):
                                                 ):
                                                     with patch.object(cli.logger, "debug"):
                                                         with patch.object(cli.logger, "info") as mocked_info:
-                                                            code = cli._cmd_doctor()
+                                                            code = cli._cmd_doctor(output_json=False, verbose=False)
 
         self.assertEqual(code, 1)
         info_text = "\n".join(call.args[0] for call in mocked_info.call_args_list if call.args)
         self.assertIn("Issues:", info_text)
         self.assertIn("MCP server 'filesystem' health check failed", info_text)
+
+    def test_cmd_doctor_json_output_for_automation(self) -> None:
+        from sentientagent_v2 import cli
+
+        fake_registry = pytypes.SimpleNamespace(workspace=Path("/tmp"), list_skills=lambda: [])
+        fake_session_cfg = pytypes.SimpleNamespace(db_url="sqlite+aiosqlite:////tmp/sessions.db")
+        fake_security_policy = pytypes.SimpleNamespace(
+            restrict_to_workspace=False,
+            allow_exec=True,
+            allow_network=True,
+            exec_allowlist=(),
+        )
+        with patch.dict(
+            os.environ,
+            {
+                "SENTIENTAGENT_V2_PROVIDER": "google",
+                "SENTIENTAGENT_V2_PROVIDER_ENABLED": "1",
+                "GOOGLE_API_KEY": "k",
+            },
+            clear=False,
+        ):
+            with patch("sentientagent_v2.cli.shutil.which", return_value="/usr/bin/adk"):
+                with patch.object(cli, "validate_provider_runtime", return_value=None):
+                    with patch.object(cli, "get_registry", return_value=fake_registry):
+                        with patch.object(cli, "load_session_config", return_value=fake_session_cfg):
+                            with patch.object(cli, "parse_enabled_channels", return_value=["local"]):
+                                with patch.object(cli, "validate_channel_setup", return_value=[]):
+                                    with patch.object(cli, "load_security_policy", return_value=fake_security_policy):
+                                        with patch.object(cli, "build_mcp_toolsets_from_env", return_value=[]):
+                                            with patch.object(cli.logger, "debug"):
+                                                with patch("builtins.print") as mocked_print:
+                                                    code = cli._cmd_doctor(output_json=True, verbose=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(mocked_print.call_count, 1)
+        payload = json.loads(mocked_print.call_args.args[0])
+        self.assertTrue(payload["ok"])
+        self.assertIn("mcp", payload)
+        self.assertIn("issues", payload)
 
     def test_log_mcp_startup_summary(self) -> None:
         from sentientagent_v2 import cli
@@ -118,6 +167,47 @@ class CLITests(unittest.TestCase):
         self.assertEqual(mocked_info.call_count, 2)
         self.assertEqual(mocked_info.call_args_list[0].args[0], "MCP toolsets: 1 server(s) configured")
         self.assertIn("MCP server filesystem", mocked_info.call_args_list[1].args[0])
+
+    def test_required_mcp_preflight_fails_when_required_server_missing(self) -> None:
+        from sentientagent_v2 import cli
+
+        with patch.dict(
+            os.environ,
+            {"SENTIENTAGENT_V2_MCP_REQUIRED_SERVERS": "filesystem,docs"},
+            clear=False,
+        ):
+            issues = asyncio.run(cli._required_mcp_preflight([]))
+        self.assertTrue(issues)
+        self.assertIn("missing from configured toolsets", issues[0])
+
+    def test_required_mcp_preflight_fails_when_required_server_unhealthy(self) -> None:
+        from sentientagent_v2 import cli
+        from sentientagent_v2.mcp_registry import build_mcp_toolsets
+
+        toolsets = build_mcp_toolsets(
+            {"filesystem": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]}},
+            log_registered=False,
+        )
+        fake_result = {
+            "name": "filesystem",
+            "transport": "stdio",
+            "prefix": "mcp_filesystem_",
+            "status": "error",
+            "error": "boom",
+            "error_kind": "config",
+            "tool_count": 0,
+            "elapsed_ms": 12,
+            "attempts": 1,
+        }
+        with patch.dict(
+            os.environ,
+            {"SENTIENTAGENT_V2_MCP_REQUIRED_SERVERS": "filesystem"},
+            clear=False,
+        ):
+            with patch.object(cli, "probe_mcp_toolsets", new=AsyncMock(return_value=[fake_result])):
+                issues = asyncio.run(cli._required_mcp_preflight(toolsets))
+        self.assertTrue(issues)
+        self.assertIn("required MCP server 'filesystem' failed", issues[0])
 
     def test_cmd_onboard_creates_config_and_workspace(self) -> None:
         from sentientagent_v2 import cli

@@ -211,6 +211,9 @@ Use env vars only for temporary overrides, for example:
 - `SENTIENTAGENT_V2_CHANNELS`
 - `SENTIENTAGENT_V2_EXEC_ALLOWLIST`
 - `SENTIENTAGENT_V2_MCP_SERVERS_JSON`
+- `SENTIENTAGENT_V2_MCP_REQUIRED_SERVERS` (comma-separated strong dependencies for gateway startup)
+- `SENTIENTAGENT_V2_MCP_PROBE_RETRY_ATTEMPTS` (MCP health-check retries, default `2`)
+- `SENTIENTAGENT_V2_MCP_PROBE_RETRY_BACKOFF_SECONDS` (MCP retry backoff base, default `0.3`)
 - `SENTIENTAGENT_V2_DEBUG`
 - `SENTIENTAGENT_V2_DEBUG_MAX_CHARS` (default `2000`, max text length per debug message)
 
@@ -324,12 +327,17 @@ Quick verify:
 
 1. Add one server under `tools.mcpServers` in `~/.sentientagent_v2/config.json`.
 2. Run `sentientagent_v2 doctor` to run MCP health checks (list tools per configured server).
-3. Start gateway: `sentientagent_v2 gateway` (startup logs print MCP server summary).
-4. Ask the agent to use MCP tools by prefix (for example `mcp_filesystem_...`).
+3. Optional automation mode: `sentientagent_v2 doctor --json` (machine-readable), or `sentientagent_v2 doctor --verbose`.
+4. Start gateway: `sentientagent_v2 gateway` (startup logs print MCP server summary).
+5. Ask the agent to use MCP tools by prefix (for example `mcp_filesystem_...`).
 
 Optional:
 
-- `SENTIENTAGENT_V2_MCP_DOCTOR_TIMEOUT_SECONDS` controls per-server MCP health-check timeout (default `5`, range `1..30`).
+- `SENTIENTAGENT_V2_MCP_DOCTOR_TIMEOUT_SECONDS` controls per-server doctor MCP timeout (default `5`, range `1..30`).
+- `SENTIENTAGENT_V2_MCP_GATEWAY_TIMEOUT_SECONDS` controls required-server MCP timeout at gateway startup (default `5`, range `1..30`).
+- `SENTIENTAGENT_V2_MCP_PROBE_RETRY_ATTEMPTS` controls retries for transient MCP probe failures (default `2`, range `1..5`).
+- `SENTIENTAGENT_V2_MCP_PROBE_RETRY_BACKOFF_SECONDS` controls retry backoff base seconds (default `0.3`, range `0..5`).
+- `SENTIENTAGENT_V2_MCP_REQUIRED_SERVERS` can enforce strong MCP dependencies. If any required server is missing or unhealthy, `sentientagent_v2 gateway` exits before startup.
 
 ## Security Policy
 

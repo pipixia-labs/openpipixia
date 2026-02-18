@@ -18,6 +18,30 @@ from loguru import logger
 from mcp import StdioServerParameters
 
 _MCP_SERVERS_ENV = "SENTIENTAGENT_V2_MCP_SERVERS_JSON"
+_TRANSIENT_ERROR_HINTS = (
+    "timeout",
+    "timed out",
+    "temporar",
+    "connection refused",
+    "connection reset",
+    "network is unreachable",
+    "service unavailable",
+    "name or service not known",
+    "dns",
+    "econnrefused",
+    "econnreset",
+)
+_CONFIG_ERROR_HINTS = (
+    "invalid",
+    "must be",
+    "missing",
+    "no such file",
+    "permission denied",
+    "unauthorized",
+    "forbidden",
+    "parse",
+    "schema",
+)
 
 
 class SafeMcpToolset(McpToolset):
@@ -89,28 +113,49 @@ async def probe_mcp_toolsets(
     toolsets: list[SafeMcpToolset],
     *,
     timeout_seconds: float = 5.0,
+    retry_attempts: int = 1,
+    retry_backoff_seconds: float = 0.3,
 ) -> list[dict[str, Any]]:
     """Probe MCP servers by listing tools, returning per-server health results.
 
     This call uses strict `McpToolset.get_tools` to surface connection errors.
+    Transient failures are retried with exponential backoff.
     """
     timeout = min(max(float(timeout_seconds), 1.0), 30.0)
+    attempts_limit = min(max(int(retry_attempts), 1), 5)
+    backoff_base = min(max(float(retry_backoff_seconds), 0.0), 5.0)
     results: list[dict[str, Any]] = []
     for toolset in toolsets:
         meta = _toolset_meta(toolset)
         started = time.perf_counter()
-        status = "ok"
+        status = "unknown"
         error = ""
+        error_kind = ""
         tool_count = 0
-        try:
-            tools = await asyncio.wait_for(McpToolset.get_tools(toolset), timeout=timeout)
-            tool_count = len(tools)
-        except asyncio.TimeoutError:
-            status = "timeout"
-            error = f"timed out after {timeout:.1f}s"
-        except Exception as exc:
-            status = "error"
-            error = str(exc)
+        attempts_used = 0
+        for attempt in range(1, attempts_limit + 1):
+            attempts_used = attempt
+            try:
+                tools = await asyncio.wait_for(McpToolset.get_tools(toolset), timeout=timeout)
+                tool_count = len(tools)
+                status = "ok"
+                error = ""
+                error_kind = ""
+                break
+            except asyncio.TimeoutError:
+                status = "timeout"
+                error = f"timed out after {timeout:.1f}s"
+                error_kind = "transient"
+            except Exception as exc:
+                status = "error"
+                error = str(exc)
+                error_kind = _classify_probe_error(exc)
+            if error_kind == "transient" and attempt < attempts_limit:
+                delay = backoff_base * (2 ** (attempt - 1))
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                continue
+            break
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         results.append(
             {
@@ -118,12 +163,24 @@ async def probe_mcp_toolsets(
                 "transport": meta["transport"],
                 "prefix": meta["prefix"],
                 "status": status,
+                "error_kind": error_kind,
                 "tool_count": tool_count,
                 "elapsed_ms": elapsed_ms,
+                "attempts": attempts_used,
                 "error": error,
             }
         )
     return results
+
+
+def _classify_probe_error(exc: Exception) -> str:
+    """Classify MCP probe errors for retry and diagnostics decisions."""
+    message = str(exc).lower()
+    if any(hint in message for hint in _TRANSIENT_ERROR_HINTS):
+        return "transient"
+    if any(hint in message for hint in _CONFIG_ERROR_HINTS):
+        return "config"
+    return "unknown"
 
 
 def build_mcp_toolsets(mcp_servers: dict[str, Any], *, log_registered: bool = True) -> list[SafeMcpToolset]:

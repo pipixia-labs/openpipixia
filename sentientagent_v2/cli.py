@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import uuid
 from pathlib import Path
+from typing import Any
 
 from google.genai import types
 from loguru import logger
@@ -24,7 +25,7 @@ from .config import (
     save_config,
 )
 from .env_utils import env_enabled
-from .mcp_registry import build_mcp_toolsets_from_env, probe_mcp_toolsets, summarize_mcp_toolsets
+from .mcp_registry import SafeMcpToolset, build_mcp_toolsets_from_env, probe_mcp_toolsets, summarize_mcp_toolsets
 from .provider import normalize_model_name, normalize_provider_name, provider_api_key_env, validate_provider_runtime
 from .runtime.adk_utils import extract_text, merge_text_stream
 from .runtime.cron_service import CronService
@@ -39,6 +40,39 @@ from .skills import get_registry
 def _stdout_line(message: str) -> None:
     """Write one plain user-facing line to stdout (without Loguru formatting)."""
     print(message)
+
+
+def _parse_csv_list(raw: str) -> list[str]:
+    """Parse comma-separated names, preserving order and removing duplicates."""
+    seen: set[str] = set()
+    names: list[str] = []
+    for item in raw.split(","):
+        name = item.strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
+
+
+def _read_env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    """Read an int env var with clamped bounds."""
+    raw = os.getenv(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except Exception:
+        value = default
+    return min(max(value, minimum), maximum)
+
+
+def _read_env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    """Read a float env var with clamped bounds."""
+    raw = os.getenv(name, str(default)).strip()
+    try:
+        value = float(raw)
+    except Exception:
+        value = default
+    return min(max(value, minimum), maximum)
 
 
 def _cmd_skills() -> int:
@@ -56,7 +90,11 @@ def _cmd_skills() -> int:
     return 0
 
 
-def _cmd_doctor() -> int:
+def _cmd_doctor(*, output_json: bool = False, verbose: bool = False) -> int:
+    """Run runtime diagnostics and return a process exit code.
+
+    When `output_json` is true, emits one machine-readable JSON payload.
+    """
     issues: list[str] = []
     if shutil.which("adk") is None:
         issues.append("Missing `adk` CLI. Install with: pip install google-adk")
@@ -90,11 +128,24 @@ def _cmd_doctor() -> int:
     security_policy = load_security_policy()
     mcp_toolsets = build_mcp_toolsets_from_env(log_registered=False)
     mcp_summaries = summarize_mcp_toolsets(mcp_toolsets)
-    mcp_timeout_raw = os.getenv("SENTIENTAGENT_V2_MCP_DOCTOR_TIMEOUT_SECONDS", "5").strip()
-    try:
-        mcp_timeout_seconds = min(max(float(mcp_timeout_raw), 1.0), 30.0)
-    except Exception:
-        mcp_timeout_seconds = 5.0
+    mcp_timeout_seconds = _read_env_float(
+        "SENTIENTAGENT_V2_MCP_DOCTOR_TIMEOUT_SECONDS",
+        5.0,
+        minimum=1.0,
+        maximum=30.0,
+    )
+    mcp_retry_attempts = _read_env_int(
+        "SENTIENTAGENT_V2_MCP_PROBE_RETRY_ATTEMPTS",
+        2,
+        minimum=1,
+        maximum=5,
+    )
+    mcp_retry_backoff_seconds = _read_env_float(
+        "SENTIENTAGENT_V2_MCP_PROBE_RETRY_BACKOFF_SECONDS",
+        0.3,
+        minimum=0.0,
+        maximum=5.0,
+    )
     mcp_probe_results: list[dict[str, object]] = []
     if mcp_toolsets:
         try:
@@ -102,6 +153,8 @@ def _cmd_doctor() -> int:
                 probe_mcp_toolsets(
                     mcp_toolsets,
                     timeout_seconds=mcp_timeout_seconds,
+                    retry_attempts=mcp_retry_attempts,
+                    retry_backoff_seconds=mcp_retry_backoff_seconds,
                 )
             )
         except Exception as exc:
@@ -110,9 +163,52 @@ def _cmd_doctor() -> int:
         if str(result.get("status")) != "ok":
             name = str(result.get("name", "unknown"))
             status = str(result.get("status", "error"))
+            kind = str(result.get("error_kind", "unknown")) or "unknown"
             error = str(result.get("error", "")).strip()
-            details = f"{status}: {error}" if error else status
+            details = f"{status}/{kind}: {error}" if error else f"{status}/{kind}"
             issues.append(f"MCP server '{name}' health check failed ({details})")
+
+    report: dict[str, Any] = {
+        "ok": not issues,
+        "issues": list(issues),
+        "config": {
+            "path": str(config_path),
+            "exists": config_path.exists(),
+            "workspace": str(registry.workspace),
+        },
+        "provider": {
+            "name": provider_name,
+            "enabled": provider_enabled,
+            "model": provider_model,
+        },
+        "skills": {"count": skills_count},
+        "session": {"db_url": session_cfg.db_url},
+        "channels": {"configured": configured_channels},
+        "web": {
+            "enabled": web_enabled and web_search_enabled,
+            "provider": web_search_provider,
+            "api_key_configured": web_search_key_configured,
+        },
+        "security": {
+            "restrict_to_workspace": security_policy.restrict_to_workspace,
+            "allow_exec": security_policy.allow_exec,
+            "allow_network": security_policy.allow_network,
+            "exec_allowlist": list(security_policy.exec_allowlist),
+        },
+        "mcp": {
+            "configured": mcp_summaries,
+            "health": mcp_probe_results,
+            "probe": {
+                "timeout_seconds": mcp_timeout_seconds,
+                "retry_attempts": mcp_retry_attempts,
+                "retry_backoff_seconds": mcp_retry_backoff_seconds,
+            },
+        },
+    }
+
+    if output_json:
+        _stdout_line(json.dumps(report, ensure_ascii=False))
+        return 0 if report["ok"] else 1
 
     logger.debug(f"Config file: {config_path}" + (" (found)" if config_path.exists() else " (not found)"))
     logger.debug(f"Workspace: {registry.workspace}")
@@ -151,8 +247,13 @@ def _cmd_doctor() -> int:
                 f"status={result.get('status')}, "
                 f"tools={result.get('tool_count')}, "
                 f"elapsed_ms={result.get('elapsed_ms')}, "
+                f"attempts={result.get('attempts')}, "
+                f"error_kind={result.get('error_kind')}, "
                 f"error={result.get('error')}"
             )
+    if verbose:
+        logger.info("Doctor details:")
+        logger.info(json.dumps(report, ensure_ascii=False, indent=2))
 
     if issues:
         logger.info("Issues:")
@@ -207,6 +308,77 @@ def _cmd_gateway_local(sender_id: str, chat_id: str) -> int:
     return _cmd_gateway(channels="local", sender_id=sender_id, chat_id=chat_id, interactive_local=True)
 
 
+def _required_mcp_servers_from_env() -> list[str]:
+    """Read strong-dependency MCP server names from environment."""
+    return _parse_csv_list(os.getenv("SENTIENTAGENT_V2_MCP_REQUIRED_SERVERS", ""))
+
+
+async def _required_mcp_preflight(agent_tools: list[object]) -> list[str]:
+    """Validate required MCP servers before gateway startup.
+
+    Returns human-readable issue lines. Empty list means startup can continue.
+    """
+    required_names = _required_mcp_servers_from_env()
+    if not required_names:
+        return []
+
+    issues: list[str] = []
+    summaries = summarize_mcp_toolsets(agent_tools)
+    configured_names = {str(item.get("name", "")) for item in summaries}
+    missing = [name for name in required_names if name not in configured_names]
+    if missing:
+        issues.append(
+            "Required MCP servers missing from configured toolsets: " + ", ".join(missing)
+        )
+
+    required_set = set(required_names)
+    required_toolsets = [
+        tool
+        for tool in agent_tools
+        if isinstance(tool, SafeMcpToolset) and str(getattr(tool, "_sentientagent_server_name", "")) in required_set
+    ]
+    if not required_toolsets:
+        return issues
+
+    timeout_seconds = _read_env_float(
+        "SENTIENTAGENT_V2_MCP_GATEWAY_TIMEOUT_SECONDS",
+        5.0,
+        minimum=1.0,
+        maximum=30.0,
+    )
+    retry_attempts = _read_env_int(
+        "SENTIENTAGENT_V2_MCP_PROBE_RETRY_ATTEMPTS",
+        2,
+        minimum=1,
+        maximum=5,
+    )
+    retry_backoff_seconds = _read_env_float(
+        "SENTIENTAGENT_V2_MCP_PROBE_RETRY_BACKOFF_SECONDS",
+        0.3,
+        minimum=0.0,
+        maximum=5.0,
+    )
+    results = await probe_mcp_toolsets(
+        required_toolsets,
+        timeout_seconds=timeout_seconds,
+        retry_attempts=retry_attempts,
+        retry_backoff_seconds=retry_backoff_seconds,
+    )
+    for result in results:
+        if str(result.get("status")) == "ok":
+            continue
+        name = str(result.get("name", "unknown"))
+        status = str(result.get("status", "error"))
+        kind = str(result.get("error_kind", "unknown")) or "unknown"
+        attempts = int(result.get("attempts", 1) or 1)
+        error = str(result.get("error", "")).strip()
+        details = f"{status}/{kind}, attempts={attempts}"
+        if error:
+            details = f"{details}, error={error}"
+        issues.append(f"required MCP server '{name}' failed health check ({details})")
+    return issues
+
+
 def _cmd_gateway(
     *,
     channels: str | None,
@@ -224,6 +396,11 @@ def _cmd_gateway(
         issues = validate_channel_setup(names)
         if issues:
             for item in issues:
+                logger.info(f"[doctor] {item}")
+            return 1
+        mcp_issues = await _required_mcp_preflight(list(getattr(root_agent, "tools", [])))
+        if mcp_issues:
+            for item in mcp_issues:
                 logger.info(f"[doctor] {item}")
             return 1
 
@@ -501,7 +678,18 @@ def main(argv: list[str] | None = None) -> None:
         help="Overwrite existing config with defaults.",
     )
     subparsers.add_parser("skills", help="List discovered skills as JSON.")
-    subparsers.add_parser("doctor", help="Check local runtime prerequisites.")
+    doctor_parser = subparsers.add_parser("doctor", help="Check local runtime prerequisites.")
+    doctor_parser.add_argument(
+        "--json",
+        dest="output_json",
+        action="store_true",
+        help="Emit diagnostics as one machine-readable JSON object.",
+    )
+    doctor_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include detailed diagnostics in text output mode.",
+    )
 
     run_parser = subparsers.add_parser("run", help="Run `adk run` for this agent.")
     run_parser.add_argument("adk_args", nargs=argparse.REMAINDER, help="Extra args passed to adk run.")
@@ -570,7 +758,7 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "skills":
         code = _cmd_skills()
     elif args.command == "doctor":
-        code = _cmd_doctor()
+        code = _cmd_doctor(output_json=args.output_json, verbose=args.verbose)
     elif args.command == "run":
         code = _cmd_run(args.adk_args)
     elif args.command == "gateway-local":

@@ -112,6 +112,47 @@ class McpRegistryProbeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["status"], "error")
         self.assertIn("boom", results[0]["error"])
+        self.assertIn("error_kind", results[0])
+        self.assertIn("attempts", results[0])
+
+    async def test_probe_mcp_toolsets_retries_transient_errors(self) -> None:
+        toolsets = build_mcp_toolsets(
+            {"filesystem": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]}},
+            log_registered=False,
+        )
+        side_effects = [RuntimeError("connection refused"), [object()]]
+        with patch("sentientagent_v2.mcp_registry.McpToolset.get_tools", new=AsyncMock(side_effect=side_effects)):
+            with patch("sentientagent_v2.mcp_registry.asyncio.sleep", new=AsyncMock()) as mocked_sleep:
+                results = await probe_mcp_toolsets(
+                    toolsets,
+                    timeout_seconds=2.0,
+                    retry_attempts=2,
+                    retry_backoff_seconds=0.01,
+                )
+        self.assertEqual(results[0]["status"], "ok")
+        self.assertEqual(results[0]["attempts"], 2)
+        mocked_sleep.assert_awaited_once()
+
+    async def test_probe_mcp_toolsets_config_errors_are_not_retried(self) -> None:
+        toolsets = build_mcp_toolsets(
+            {"filesystem": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]}},
+            log_registered=False,
+        )
+        with patch(
+            "sentientagent_v2.mcp_registry.McpToolset.get_tools",
+            new=AsyncMock(side_effect=RuntimeError("invalid URL scheme")),
+        ):
+            with patch("sentientagent_v2.mcp_registry.asyncio.sleep", new=AsyncMock()) as mocked_sleep:
+                results = await probe_mcp_toolsets(
+                    toolsets,
+                    timeout_seconds=2.0,
+                    retry_attempts=3,
+                    retry_backoff_seconds=0.01,
+                )
+        self.assertEqual(results[0]["status"], "error")
+        self.assertEqual(results[0]["error_kind"], "config")
+        self.assertEqual(results[0]["attempts"], 1)
+        mocked_sleep.assert_not_awaited()
 
 
 if __name__ == "__main__":
