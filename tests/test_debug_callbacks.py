@@ -94,6 +94,74 @@ class DebugCallbacksTests(unittest.TestCase):
 
         self.assertEqual(buf.getvalue(), "")
 
+    def test_before_model_patches_missing_function_call_id_when_debug_disabled(self) -> None:
+        callback_context = pytypes.SimpleNamespace(invocation_id="inv-fc", session=pytypes.SimpleNamespace(id="s-4"))
+        function_call = pytypes.SimpleNamespace(id=None, name="cron", args={"action": "list"})
+        llm_request = pytypes.SimpleNamespace(
+            model="openai/gpt-5.2",
+            config=pytypes.SimpleNamespace(system_instruction="sys"),
+            contents=[
+                pytypes.SimpleNamespace(
+                    role="model",
+                    parts=[
+                        pytypes.SimpleNamespace(
+                            text="",
+                            function_call=function_call,
+                            function_response=None,
+                        )
+                    ],
+                )
+            ],
+            tools_dict={},
+        )
+
+        with patch.dict(os.environ, {"SENTIENTAGENT_V2_DEBUG": "0"}, clear=False):
+            buf = io.StringIO()
+            with redirect_stderr(buf):
+                before_model_debug_callback(callback_context, llm_request)
+
+        self.assertEqual(buf.getvalue(), "")
+        self.assertIsInstance(function_call.id, str)
+        self.assertTrue(function_call.id.startswith("adk-auto-inv-fc-"))
+
+    def test_before_model_patches_missing_function_response_id_from_pending_tool_call(self) -> None:
+        callback_context = pytypes.SimpleNamespace(invocation_id="inv-fr", session=pytypes.SimpleNamespace(id="s-5"))
+        function_call = pytypes.SimpleNamespace(id=None, name="cron", args={"action": "list"})
+        function_response = pytypes.SimpleNamespace(id=None, response={"ok": True})
+        llm_request = pytypes.SimpleNamespace(
+            model="openai/gpt-5.2",
+            config=pytypes.SimpleNamespace(system_instruction="sys"),
+            contents=[
+                pytypes.SimpleNamespace(
+                    role="model",
+                    parts=[
+                        pytypes.SimpleNamespace(
+                            text="",
+                            function_call=function_call,
+                            function_response=None,
+                        )
+                    ],
+                ),
+                pytypes.SimpleNamespace(
+                    role="tool",
+                    parts=[
+                        pytypes.SimpleNamespace(
+                            text="",
+                            function_call=None,
+                            function_response=function_response,
+                        )
+                    ],
+                ),
+            ],
+            tools_dict={},
+        )
+
+        with patch.dict(os.environ, {"SENTIENTAGENT_V2_DEBUG": "0"}, clear=False):
+            before_model_debug_callback(callback_context, llm_request)
+
+        self.assertIsInstance(function_call.id, str)
+        self.assertEqual(function_response.id, function_call.id)
+
 
 if __name__ == "__main__":
     unittest.main()

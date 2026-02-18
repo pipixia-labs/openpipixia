@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+import uuid
 from typing import Any
 
 from google.adk.agents.callback_context import CallbackContext
@@ -85,6 +86,58 @@ def _request_texts(llm_request: LlmRequest) -> list[dict[str, str]]:
     return rows
 
 
+def _non_empty_str(value: Any) -> str | None:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            return stripped
+    return None
+
+
+def _sanitize_tool_ids(callback_context: CallbackContext, llm_request: LlmRequest) -> int:
+    """Ensure tool call / tool response ids are present before provider call."""
+    invocation_id = _non_empty_str(getattr(callback_context, "invocation_id", None)) or "inv"
+    patched = 0
+    fallback_counter = 0
+    pending_tool_call_ids: list[str] = []
+
+    for content_index, content in enumerate(getattr(llm_request, "contents", []) or []):
+        parts = getattr(content, "parts", None) or []
+        for part_index, part in enumerate(parts):
+            function_call = getattr(part, "function_call", None)
+            if function_call is not None:
+                current_id = _non_empty_str(getattr(function_call, "id", None))
+                if current_id is None:
+                    fallback_counter += 1
+                    current_id = (
+                        f"adk-auto-{invocation_id}-{content_index}-{part_index}-{fallback_counter}-{uuid.uuid4().hex[:8]}"
+                    )
+                    function_call.id = current_id
+                    patched += 1
+                pending_tool_call_ids.append(current_id)
+
+            function_response = getattr(part, "function_response", None)
+            if function_response is not None:
+                response_id = _non_empty_str(getattr(function_response, "id", None))
+                if response_id is None:
+                    if pending_tool_call_ids:
+                        response_id = pending_tool_call_ids.pop(0)
+                    else:
+                        fallback_counter += 1
+                        response_id = (
+                            f"adk-auto-resp-{invocation_id}-{content_index}-{part_index}-{fallback_counter}-{uuid.uuid4().hex[:8]}"
+                        )
+                    function_response.id = response_id
+                    patched += 1
+                else:
+                    try:
+                        pending_tool_call_ids.remove(response_id)
+                    except ValueError:
+                        pass
+
+    return patched
+
+
 def _response_text(llm_response: LlmResponse) -> str:
     return _extract_content_text(getattr(llm_response, "content", None))
 
@@ -96,6 +149,7 @@ def _write_debug(tag: str, payload: dict[str, Any]) -> None:
 
 def before_model_debug_callback(callback_context: CallbackContext, llm_request: LlmRequest) -> LlmResponse | None:
     """Emit sanitized request payload before model invocation."""
+    patched = _sanitize_tool_ids(callback_context, llm_request)
     if not _debug_enabled():
         return None
 
@@ -112,6 +166,8 @@ def before_model_debug_callback(callback_context: CallbackContext, llm_request: 
             for row in texts
         ],
     }
+    if patched:
+        payload["patched_tool_ids"] = patched
     _write_debug("llm.before_model", payload)
     return None
 
