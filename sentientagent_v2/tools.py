@@ -46,7 +46,18 @@ def _json(obj: Any) -> str:
 
 
 def read_file(path: str) -> str:
-    """Read the contents of a UTF-8 text file."""
+    """Read a UTF-8 text file.
+
+    Args:
+        path: Absolute or workspace-relative file path.
+
+    Returns:
+        File content on success, otherwise an "Error: ..." message.
+
+    Notes:
+        - Path resolution follows security policy (workspace restriction may apply).
+        - Intended for text files.
+    """
     _debug("tool.read_file.input", {"path": path})
     try:
         target = _resolve_path(path)
@@ -64,7 +75,15 @@ def read_file(path: str) -> str:
 
 
 def write_file(path: str, content: str) -> str:
-    """Write UTF-8 text content into a file."""
+    """Write UTF-8 text to a file (create parent directories if needed).
+
+    Args:
+        path: Absolute or workspace-relative file path.
+        content: Full file content to write (overwrite mode).
+
+    Returns:
+        Success message with byte count, or an "Error: ..." message.
+    """
     _debug("tool.write_file.input", {"path": path, "chars": len(content)})
     try:
         target = _resolve_path(path)
@@ -80,7 +99,19 @@ def write_file(path: str, content: str) -> str:
 
 
 def edit_file(path: str, old_text: str, new_text: str) -> str:
-    """Replace one exact text occurrence in a file."""
+    """Replace exactly one occurrence of text in a file.
+
+    Args:
+        path: Absolute or workspace-relative file path.
+        old_text: Exact text snippet to locate (case-sensitive).
+        new_text: Replacement text.
+
+    Returns:
+        Success message, warning when old_text is not unique, or an "Error: ..." message.
+
+    Notes:
+        - This tool refuses ambiguous edits when old_text appears multiple times.
+    """
     _debug(
         "tool.edit_file.input",
         {"path": path, "old_text_chars": len(old_text), "new_text_chars": len(new_text)},
@@ -111,7 +142,15 @@ def edit_file(path: str, old_text: str, new_text: str) -> str:
 
 
 def list_dir(path: str) -> str:
-    """List entries in a directory."""
+    """List directory entries in a stable, human-readable format.
+
+    Args:
+        path: Absolute or workspace-relative directory path.
+
+    Returns:
+        One entry per line, prefixed with "[D]" (directory) or "[F]" (file),
+        or an "Error: ..." message.
+    """
     _debug("tool.list_dir.input", {"path": path})
     try:
         target = _resolve_path(path)
@@ -193,7 +232,20 @@ def _validate_exec_paths(argv: list[str], cwd: Path, policy: SecurityPolicy) -> 
 
 
 def exec_command(command: str, working_dir: str | None = None, timeout: int = 60) -> str:
-    """Execute a shell command and return stdout/stderr."""
+    """Execute a command safely and return combined output.
+
+    Args:
+        command: Command string (parsed by shlex, executed with shell=False).
+        working_dir: Optional working directory; defaults to workspace root.
+        timeout: Max execution time in seconds.
+
+    Returns:
+        stdout/stderr text, optionally with exit code, or an "Error: ..." message.
+
+    Safety:
+        - Enforces security policy flags (allowExec, execAllowlist, workspace path guard).
+        - Blocks known destructive command patterns.
+    """
     _debug("tool.exec.input", {"command": command, "working_dir": working_dir, "timeout": timeout})
     cmd = command.strip()
     if not cmd:
@@ -270,7 +322,19 @@ def _validate_http_url(url: str) -> tuple[bool, str]:
 
 
 def web_search(query: str, count: int = 5) -> str:
-    """Search the web via Brave Search API."""
+    """Search the web via Brave Search and return summarized top results.
+
+    Args:
+        query: Search query text.
+        count: Requested result count (bounded by runtime configuration).
+
+    Returns:
+        Plain-text list of search hits, "No results ...", or an "Error: ..." message.
+
+    Notes:
+        - Current provider support is Brave only.
+        - Requires network enabled and BRAVE_API_KEY configured.
+    """
     _debug("tool.web_search.input", {"query": query, "count": count})
     if not _security_policy().allow_network:
         return _ret("tool.web_search.output", "Error: network access is disabled by security policy")
@@ -328,7 +392,16 @@ def web_search(query: str, count: int = 5) -> str:
 
 
 def web_fetch(url: str, max_chars: int = 50000) -> str:
-    """Fetch URL and return extracted text."""
+    """Fetch a URL and return structured extraction as JSON text.
+
+    Args:
+        url: Target URL (http/https only).
+        max_chars: Max extracted text length before truncation.
+
+    Returns:
+        JSON string with fields like url/finalUrl/status/extractor/truncated/text,
+        or JSON-formatted error payload.
+    """
     _debug("tool.web_fetch.input", {"url": url, "max_chars": max_chars})
     if not _security_policy().allow_network:
         return _ret("tool.web_fetch.output", _json({"error": "network access is disabled by security policy", "url": url}))
@@ -412,7 +485,22 @@ def _publish_outbound_if_configured(msg: OutboundMessage) -> bool:
 
 
 def message(content: str, channel: str | None = None, chat_id: str | None = None) -> str:
-    """Send an outbound message via bus publisher or local outbox fallback."""
+    """Send an outbound text message to a channel target.
+
+    Args:
+        content: Message content to send.
+        channel: Optional channel override (e.g. "local", "feishu").
+        chat_id: Optional target conversation/user id.
+
+    Returns:
+        Queue success message when gateway publisher is active; otherwise a local
+        outbox write confirmation.
+
+    Routing:
+        - Uses explicit channel/chat_id first.
+        - Falls back to current route context.
+        - Final fallback is local/default.
+    """
     target_channel, target_chat_id = _resolve_route(channel, chat_id)
     _debug("tool.message.input", {"channel": target_channel, "chat_id": target_chat_id, "chars": len(content)})
 
@@ -437,7 +525,21 @@ def message(content: str, channel: str | None = None, chat_id: str | None = None
 
 
 def message_image(path: str, caption: str = "", channel: str | None = None, chat_id: str | None = None) -> str:
-    """Send an outbound image message via bus publisher or local outbox fallback."""
+    """Send an outbound image message (optionally with caption).
+
+    Args:
+        path: Path to local image file.
+        caption: Optional caption text.
+        channel: Optional channel override.
+        chat_id: Optional target conversation/user id.
+
+    Returns:
+        Queue success message when gateway publisher is active; otherwise a local
+        outbox write confirmation, or an "Error: ..." message.
+
+    Notes:
+        - Allowed suffixes: .png, .jpg, .jpeg, .webp, .gif, .bmp
+    """
     target_channel, target_chat_id = _resolve_route(channel, chat_id)
     _debug(
         "tool.message_image.input",
@@ -534,7 +636,39 @@ def cron(
     channel: str | None = None,
     chat_id: str | None = None,
 ) -> str:
-    """Manage persisted cron jobs: add/list/remove."""
+    """Manage persisted cron jobs (scheduler + delivery metadata).
+
+    Args:
+        action: One of "add", "list", "remove".
+        message: Prompt executed at trigger time (required for add). This is sent
+            to the LLM as a new user message, so write it as an explicit
+            instruction, not just a loose label.
+        every_seconds: Fixed interval schedule in seconds (add mode).
+        cron_expr: Cron schedule expression, e.g. "0 9 * * 1-5" (add mode).
+        at: One-time absolute ISO datetime string, e.g. "2026-02-18T17:30:00" (add mode).
+        job_id: Job id for remove mode.
+        tz: IANA timezone for cron_expr, e.g. "Asia/Shanghai".
+        deliver: Whether cron execution result should be delivered outward.
+            If omitted, defaults to True in this tool.
+        channel: Optional delivery channel override.
+        chat_id: Optional delivery target id override.
+
+    Returns:
+        Human-readable status string, or an "Error: ..." message.
+
+    Important:
+        - Provide exactly one schedule source for add: every_seconds OR cron_expr OR at.
+        - `at` must be an absolute timestamp, not a relative phrase.
+        - One-time `at` jobs are auto-deleted after execution.
+        - `message` should clearly specify the expected action and output format.
+          Good reminder example:
+            "你是提醒助手。请只输出：时间到了。不要添加其他内容。"
+          Good task example:
+            "请检查项目状态并输出三条摘要，每条不超过20字。"
+        - When `deliver=True`, gateway will automatically deliver the final LLM
+          response to channel/chat_id. Usually no extra `message(...)` tool call
+          is needed unless multi-message behavior is required.
+    """
     _debug(
         "tool.cron.input",
         {
