@@ -36,6 +36,11 @@ from .security import load_security_policy
 from .skills import get_registry
 
 
+def _stdout_line(message: str) -> None:
+    """Write one plain user-facing line to stdout (without Loguru formatting)."""
+    print(message)
+
+
 def _cmd_skills() -> int:
     registry = get_registry()
     payload = [
@@ -289,12 +294,14 @@ def _cmd_cron_list(*, include_disabled: bool) -> int:
     service = _cron_service()
     jobs = service.list_jobs(include_disabled=include_disabled)
     if not jobs:
-        logger.info("No scheduled jobs.")
+        _stdout_line("No scheduled jobs.")
         return 0
-    logger.info("Scheduled jobs:")
+    _stdout_line("Scheduled jobs:")
     for job in jobs:
         status = "enabled" if job.enabled else "disabled"
-        logger.info(f"- {job.name} (id: {job.id}, {_format_schedule(job)}, {status}, next={_format_ts(job.state.next_run_at_ms)})")
+        _stdout_line(
+            f"- {job.name} (id: {job.id}, {_format_schedule(job)}, {status}, next={_format_ts(job.state.next_run_at_ms)})"
+        )
     return 0
 
 

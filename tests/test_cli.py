@@ -254,6 +254,25 @@ class CLITests(unittest.TestCase):
         self.assertIn("runtime_active=True", line)
         self.assertIn("runtime_pid=12345", line)
 
+    def test_cmd_cron_list_uses_plain_stdout(self) -> None:
+        from sentientagent_v2 import cli
+
+        fake_schedule = pytypes.SimpleNamespace(kind="every", every_seconds=30)
+        fake_state = pytypes.SimpleNamespace(next_run_at_ms=None)
+        fake_job = pytypes.SimpleNamespace(id="j1", name="demo", enabled=True, schedule=fake_schedule, state=fake_state)
+        fake_service = pytypes.SimpleNamespace(list_jobs=lambda include_disabled: [fake_job])
+
+        with patch.object(cli, "_cron_service", return_value=fake_service):
+            with patch("builtins.print") as mocked_print:
+                with patch.object(cli.logger, "info") as mocked_info:
+                    code = cli._cmd_cron_list(include_disabled=True)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(mocked_print.call_count, 2)
+        mocked_print.assert_any_call("Scheduled jobs:")
+        mocked_print.assert_any_call("- demo (id: j1, every:30s, enabled, next=-)")
+        mocked_info.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
