@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 from google.genai import types
+from loguru import logger
 
 from .channels.factory import build_channel_manager, parse_enabled_channels, validate_channel_setup
 from .config import (
@@ -35,6 +36,16 @@ from .security import load_security_policy
 from .skills import get_registry
 
 
+def _log_info(message: str) -> None:
+    """Emit user-facing CLI output at info level."""
+    logger.info(message)
+
+
+def _log_debug(message: str) -> None:
+    """Emit verbose CLI diagnostics at debug level."""
+    logger.debug(message)
+
+
 def _cmd_skills() -> int:
     registry = get_registry()
     payload = [
@@ -46,7 +57,7 @@ def _cmd_skills() -> int:
         }
         for info in registry.list_skills()
     ]
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    _log_info(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -83,19 +94,19 @@ def _cmd_doctor() -> int:
     web_search_key_configured = bool(os.getenv("BRAVE_API_KEY", "").strip())
     security_policy = load_security_policy()
 
-    print(f"Config file: {config_path}" + (" (found)" if config_path.exists() else " (not found)"))
-    print(f"Workspace: {registry.workspace}")
-    print(f"Detected skills: {skills_count}")
-    print(f"Provider: {provider_name} (enabled={provider_enabled}, model={provider_model})")
-    print(f"Session storage: sqlite ({session_cfg.db_url})")
-    print(f"Configured channels: {', '.join(configured_channels) if configured_channels else '(none)'}")
-    print(
+    _log_debug(f"Config file: {config_path}" + (" (found)" if config_path.exists() else " (not found)"))
+    _log_debug(f"Workspace: {registry.workspace}")
+    _log_debug(f"Detected skills: {skills_count}")
+    _log_debug(f"Provider: {provider_name} (enabled={provider_enabled}, model={provider_model})")
+    _log_debug(f"Session storage: sqlite ({session_cfg.db_url})")
+    _log_debug(f"Configured channels: {', '.join(configured_channels) if configured_channels else '(none)'}")
+    _log_debug(
         "Web search: "
         f"enabled={web_enabled and web_search_enabled}, "
         f"provider={web_search_provider}, "
         f"api_key={'configured' if web_search_key_configured else 'missing'}"
     )
-    print(
+    _log_debug(
         "Security: "
         f"restrict_to_workspace={security_policy.restrict_to_workspace}, "
         f"allow_exec={security_policy.allow_exec}, "
@@ -104,18 +115,18 @@ def _cmd_doctor() -> int:
     )
 
     if issues:
-        print("\nIssues:")
+        _log_info("Issues:")
         for item in issues:
-            print(f"- {item}")
+            _log_info(f"- {item}")
         return 1
 
-    print("Environment looks good.")
+    _log_info("Environment looks good.")
     return 0
 
 
 def _cmd_run(passthrough_args: list[str]) -> int:
     if shutil.which("adk") is None:
-        print("`adk` CLI not found. Install with: pip install google-adk")
+        _log_info("`adk` CLI not found. Install with: pip install google-adk")
         return 1
 
     agent_dir = Path(__file__).parent.resolve()
@@ -141,15 +152,14 @@ def _cmd_onboard(force: bool) -> int:
     workspace.mkdir(parents=True, exist_ok=True)
     (workspace / "skills").mkdir(parents=True, exist_ok=True)
 
-    print(f"Config {state}: {saved_to}")
-    print(f"Workspace ready: {workspace}")
-    print("")
-    print("Next steps:")
-    print(f"1. Edit config: {saved_to}")
-    print("2. Configure providers/channels/web sections and their `enabled` flags")
-    print("3. Fill providers.<provider>.apiKey for the enabled provider (and channel credentials if needed)")
-    print("4. Start gateway: sentientagent_v2 gateway")
-    print("5. Dry run: sentientagent_v2 doctor")
+    _log_info(f"Config {state}: {saved_to}")
+    _log_info(f"Workspace ready: {workspace}")
+    _log_info("Next steps:")
+    _log_info(f"1. Edit config: {saved_to}")
+    _log_info("2. Configure providers/channels/web sections and their `enabled` flags")
+    _log_info("3. Fill providers.<provider>.apiKey for the enabled provider (and channel credentials if needed)")
+    _log_info("4. Start gateway: sentientagent_v2 gateway")
+    _log_info("5. Dry run: sentientagent_v2 doctor")
     return 0
 
 
@@ -174,13 +184,13 @@ def _cmd_gateway(
         issues = validate_channel_setup(names)
         if issues:
             for item in issues:
-                print(f"[doctor] {item}")
+                _log_info(f"[doctor] {item}")
             return 1
 
         manager, local_channel = build_channel_manager(
             bus=bus,
             channel_names=names,
-            local_writer=print,
+            local_writer=_log_info,
         )
         gateway = Gateway(
             agent=root_agent,
@@ -189,9 +199,9 @@ def _cmd_gateway(
             channel_manager=manager,
         )
         await gateway.start()
-        print(f"gateway started with channels: {', '.join(names)}")
+        _log_info(f"gateway started with channels: {', '.join(names)}")
         if interactive_local and local_channel:
-            print("local interactive mode: type /quit or /exit to stop.")
+            _log_info("local interactive mode: type /quit or /exit to stop.")
         try:
             while True:
                 if interactive_local and local_channel:
@@ -216,7 +226,7 @@ def _cmd_gateway(
     except KeyboardInterrupt:
         return 0
     except Exception as exc:
-        print(f"Error running gateway: {exc}")
+        _log_info(f"Error running gateway: {exc}")
         return 1
 
 
@@ -250,13 +260,13 @@ def _cmd_message(message: str, user_id: str, session_id: str) -> int:
     try:
         final_text = asyncio.run(_run_once())
     except Exception as exc:
-        print(f"Error running agent: {exc}")
+        _log_info(f"Error running agent: {exc}")
         return 1
 
     if not final_text:
-        print("(no response)")
+        _log_info("(no response)")
         return 0
-    print(final_text)
+    _log_info(final_text)
     return 0
 
 
@@ -289,12 +299,12 @@ def _cmd_cron_list(*, include_disabled: bool) -> int:
     service = _cron_service()
     jobs = service.list_jobs(include_disabled=include_disabled)
     if not jobs:
-        print("No scheduled jobs.")
+        _log_info("No scheduled jobs.")
         return 0
-    print("Scheduled jobs:")
+    _log_info("Scheduled jobs:")
     for job in jobs:
         status = "enabled" if job.enabled else "disabled"
-        print(f"- {job.name} (id: {job.id}, {_format_schedule(job)}, {status}, next={_format_ts(job.state.next_run_at_ms)})")
+        _log_info(f"- {job.name} (id: {job.id}, {_format_schedule(job)}, {status}, next={_format_ts(job.state.next_run_at_ms)})")
     return 0
 
 
@@ -311,10 +321,10 @@ def _cmd_cron_add(
     channel: str | None,
 ) -> int:
     if tz and not cron_expr:
-        print("Error: --tz can only be used with --cron")
+        _log_info("Error: --tz can only be used with --cron")
         return 1
     if deliver and not to:
-        print("Error: --to is required when --deliver is set")
+        _log_info("Error: --to is required when --deliver is set")
         return 1
 
     parsed, parse_error = parse_schedule_input(
@@ -324,10 +334,10 @@ def _cmd_cron_add(
         tz=tz,
     )
     if parse_error:
-        print(f"Error: {parse_error}")
+        _log_info(f"Error: {parse_error}")
         return 1
     if parsed is None:  # pragma: no cover - defensive fallback
-        print("Error: failed to parse schedule")
+        _log_info("Error: failed to parse schedule")
         return 1
     schedule = parsed.schedule
     delete_after_run = parsed.delete_after_run
@@ -343,25 +353,25 @@ def _cmd_cron_add(
         to=target_to,
         delete_after_run=delete_after_run,
     )
-    print(f"Added job '{job.name}' ({job.id})")
+    _log_info(f"Added job '{job.name}' ({job.id})")
     return 0
 
 
 def _cmd_cron_remove(job_id: str) -> int:
     if _cron_service().remove_job(job_id):
-        print(f"Removed job {job_id}")
+        _log_info(f"Removed job {job_id}")
         return 0
-    print(f"Job {job_id} not found")
+    _log_info(f"Job {job_id} not found")
     return 1
 
 
 def _cmd_cron_enable(job_id: str, *, disable: bool) -> int:
     job = _cron_service().enable_job(job_id, enabled=not disable)
     if job is None:
-        print(f"Job {job_id} not found")
+        _log_info(f"Job {job_id} not found")
         return 1
     state = "disabled" if disable else "enabled"
-    print(f"Job '{job.name}' {state}")
+    _log_info(f"Job '{job.name}' {state}")
     return 0
 
 
@@ -371,27 +381,27 @@ def _cmd_cron_run(job_id: str, *, force: bool) -> int:
 
     result = asyncio.run(_run())
     if result.reason == "ok":
-        print("Job executed")
+        _log_info("Job executed")
         return 0
     if result.reason == "disabled":
-        print(f"Job {job_id} is disabled. Use --force to run it once.")
+        _log_info(f"Job {job_id} is disabled. Use --force to run it once.")
         return 1
     if result.reason == "not_found":
-        print(f"Job {job_id} not found")
+        _log_info(f"Job {job_id} not found")
         return 1
     if result.reason == "no_callback":
-        print(
+        _log_info(
             "Job skipped: no executor callback is configured in this process. "
             "Run via gateway runtime to execute the agent task."
         )
         return 1
     if result.reason == "error":
         if result.error:
-            print(f"Job execution failed: {result.error}")
+            _log_info(f"Job execution failed: {result.error}")
         else:
-            print(f"Job execution failed: {job_id}")
+            _log_info(f"Job execution failed: {job_id}")
         return 1
-    print(f"Job skipped: {result.reason}")
+    _log_info(f"Job skipped: {result.reason}")
     return 1
 
 
@@ -399,7 +409,7 @@ def _cmd_cron_status() -> int:
     info = _cron_service().status()
     runtime_pid = info.get("runtime_pid")
     runtime_pid_text = str(runtime_pid) if runtime_pid is not None else "-"
-    print(
+    _log_info(
         "Cron status: "
         f"local_running={info['running']}, "
         f"runtime_active={info.get('runtime_active', False)}, "

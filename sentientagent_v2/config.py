@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+
+from loguru import logger
 
 from .env_utils import is_enabled
 from .provider import default_model_for_provider, normalize_model_name, provider_api_key_env
@@ -116,11 +117,11 @@ def load_config(config_path: Path | None = None) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
-        print(f"Warning: failed to load config at {path}: {exc}", file=sys.stderr)
+        logger.debug("Warning: failed to load config at {}: {}", path, exc)
         return default_config()
 
     if not isinstance(data, dict):
-        print(f"Warning: invalid config root at {path}; expected JSON object", file=sys.stderr)
+        logger.debug("Warning: invalid config root at {}; expected JSON object", path)
         return default_config()
     return normalize_config(data)
 

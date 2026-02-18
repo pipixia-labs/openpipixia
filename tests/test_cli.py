@@ -84,11 +84,11 @@ class CLITests(unittest.TestCase):
 
         with patch.dict("sys.modules", {"sentientagent_v2.agent": fake_agent_module}):
             with patch("sentientagent_v2.cli.create_runner", return_value=(_FakeRunner(), object())):
-                with patch("builtins.print") as mocked_print:
+                with patch.object(cli, "_log_info") as mocked_info:
                     code = cli._cmd_message("hello", user_id="u1", session_id="s1")
 
         self.assertEqual(code, 0)
-        mocked_print.assert_called_with("final answer")
+        mocked_info.assert_called_with("final answer")
         request = captured["new_message"]
         text = request.parts[0].text
         self.assertIn("Current request time:", text)
@@ -115,11 +115,11 @@ class CLITests(unittest.TestCase):
 
         with patch.dict("sys.modules", {"sentientagent_v2.agent": fake_agent_module}):
             with patch("sentientagent_v2.cli.create_runner", return_value=(_FakeRunner(), object())):
-                with patch("builtins.print") as mocked_print:
+                with patch.object(cli, "_log_info") as mocked_info:
                     code = cli._cmd_message("hello", user_id="u1", session_id="s1")
 
         self.assertEqual(code, 0)
-        mocked_print.assert_called_with("hello world")
+        mocked_info.assert_called_with("hello world")
 
     def test_cron_list_mode_dispatch(self) -> None:
         from sentientagent_v2 import cli
@@ -169,7 +169,7 @@ class CLITests(unittest.TestCase):
     def test_cmd_cron_add_validates_deliver_target(self) -> None:
         from sentientagent_v2 import cli
 
-        with patch("builtins.print") as mocked_print:
+        with patch.object(cli, "_log_info") as mocked_info:
             code = cli._cmd_cron_add(
                 name="demo",
                 message="hello",
@@ -182,14 +182,14 @@ class CLITests(unittest.TestCase):
                 channel=None,
             )
         self.assertEqual(code, 1)
-        mocked_print.assert_called_with("Error: --to is required when --deliver is set")
+        mocked_info.assert_called_with("Error: --to is required when --deliver is set")
 
     def test_cmd_cron_add_persists_job(self) -> None:
         from sentientagent_v2 import cli
 
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(os.environ, {"SENTIENTAGENT_V2_WORKSPACE": tmp}, clear=False):
-                with patch("builtins.print") as mocked_print:
+                with patch.object(cli, "_log_info") as mocked_info:
                     code = cli._cmd_cron_add(
                         name="demo",
                         message="hello cron",
@@ -202,7 +202,7 @@ class CLITests(unittest.TestCase):
                         channel=None,
                     )
             self.assertEqual(code, 0)
-            out = mocked_print.call_args[0][0]
+            out = mocked_info.call_args[0][0]
             self.assertIn("Added job 'demo'", out)
             store = Path(tmp) / ".sentientagent_v2" / "cron_jobs.json"
             self.assertTrue(store.exists())
@@ -225,11 +225,11 @@ class CLITests(unittest.TestCase):
                 )
                 self.assertEqual(add_code, 0)
                 job_id = cli._cron_service().list_jobs(include_disabled=True)[0].id
-                with patch("builtins.print") as mocked_print:
+                with patch.object(cli, "_log_info") as mocked_info:
                     code = cli._cmd_cron_run(job_id, force=False)
 
         self.assertEqual(code, 1)
-        self.assertIn("no executor callback", mocked_print.call_args[0][0])
+        self.assertIn("no executor callback", mocked_info.call_args[0][0])
 
     def test_cmd_cron_status_prints_runtime_fields(self) -> None:
         from sentientagent_v2 import cli
@@ -245,11 +245,11 @@ class CLITests(unittest.TestCase):
             }
         )
         with patch.object(cli, "_cron_service", return_value=fake_service):
-            with patch("builtins.print") as mocked_print:
+            with patch.object(cli, "_log_info") as mocked_info:
                 code = cli._cmd_cron_status()
 
         self.assertEqual(code, 0)
-        line = mocked_print.call_args[0][0]
+        line = mocked_info.call_args[0][0]
         self.assertIn("local_running=False", line)
         self.assertIn("runtime_active=True", line)
         self.assertIn("runtime_pid=12345", line)

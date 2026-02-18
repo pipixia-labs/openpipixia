@@ -26,4 +26,4 @@ def emit_debug(tag: str, payload: Any) -> None:
     if _loguru_logger is not None:
         _loguru_logger.debug("[DEBUG] {}: {}", tag, body)
         return
-    print(f"[DEBUG] {tag}: {body}", file=sys.stderr)
+    sys.stderr.write(f"[DEBUG] {tag}: {body}\n")
