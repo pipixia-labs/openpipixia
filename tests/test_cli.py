@@ -84,7 +84,7 @@ class CLITests(unittest.TestCase):
 
         with patch.dict("sys.modules", {"sentientagent_v2.agent": fake_agent_module}):
             with patch("sentientagent_v2.cli.create_runner", return_value=(_FakeRunner(), object())):
-                with patch.object(cli, "_log_info") as mocked_info:
+                with patch.object(cli.logger, "info") as mocked_info:
                     code = cli._cmd_message("hello", user_id="u1", session_id="s1")
 
         self.assertEqual(code, 0)
@@ -115,7 +115,7 @@ class CLITests(unittest.TestCase):
 
         with patch.dict("sys.modules", {"sentientagent_v2.agent": fake_agent_module}):
             with patch("sentientagent_v2.cli.create_runner", return_value=(_FakeRunner(), object())):
-                with patch.object(cli, "_log_info") as mocked_info:
+                with patch.object(cli.logger, "info") as mocked_info:
                     code = cli._cmd_message("hello", user_id="u1", session_id="s1")
 
         self.assertEqual(code, 0)
@@ -169,7 +169,7 @@ class CLITests(unittest.TestCase):
     def test_cmd_cron_add_validates_deliver_target(self) -> None:
         from sentientagent_v2 import cli
 
-        with patch.object(cli, "_log_info") as mocked_info:
+        with patch.object(cli.logger, "info") as mocked_info:
             code = cli._cmd_cron_add(
                 name="demo",
                 message="hello",
@@ -189,7 +189,7 @@ class CLITests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(os.environ, {"SENTIENTAGENT_V2_WORKSPACE": tmp}, clear=False):
-                with patch.object(cli, "_log_info") as mocked_info:
+                with patch.object(cli.logger, "info") as mocked_info:
                     code = cli._cmd_cron_add(
                         name="demo",
                         message="hello cron",
@@ -225,7 +225,7 @@ class CLITests(unittest.TestCase):
                 )
                 self.assertEqual(add_code, 0)
                 job_id = cli._cron_service().list_jobs(include_disabled=True)[0].id
-                with patch.object(cli, "_log_info") as mocked_info:
+                with patch.object(cli.logger, "info") as mocked_info:
                     code = cli._cmd_cron_run(job_id, force=False)
 
         self.assertEqual(code, 1)
@@ -245,7 +245,7 @@ class CLITests(unittest.TestCase):
             }
         )
         with patch.object(cli, "_cron_service", return_value=fake_service):
-            with patch.object(cli, "_log_info") as mocked_info:
+            with patch.object(cli.logger, "info") as mocked_info:
                 code = cli._cmd_cron_status()
 
         self.assertEqual(code, 0)

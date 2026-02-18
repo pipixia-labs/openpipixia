@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import io
+import json
 import os
 import types as pytypes
 import unittest
-from contextlib import redirect_stderr
 from unittest.mock import patch
 
 from sentientagent_v2.runtime.debug_callbacks import after_model_debug_callback, before_model_debug_callback
@@ -33,16 +32,16 @@ class DebugCallbacksTests(unittest.TestCase):
         )
 
         with patch.dict(os.environ, {"SENTIENTAGENT_V2_DEBUG": "1"}, clear=False):
-            with patch("sentientagent_v2.logging_utils._loguru_logger", None):
-                buf = io.StringIO()
-                with redirect_stderr(buf):
-                    result = before_model_debug_callback(callback_context, llm_request)
+            with patch("sentientagent_v2.runtime.debug_callbacks.emit_debug") as mocked_emit:
+                result = before_model_debug_callback(callback_context, llm_request)
 
         self.assertIsNone(result)
-        log = buf.getvalue()
-        self.assertIn("llm.before_model", log)
-        self.assertIn("tomorrow weather in Weihai", log)
-        self.assertIn("You are an assistant.", log)
+        mocked_emit.assert_called_once()
+        tag, payload = mocked_emit.call_args.args
+        self.assertEqual(tag, "llm.before_model")
+        serialized = json.dumps(payload, ensure_ascii=False)
+        self.assertIn("tomorrow weather in Weihai", serialized)
+        self.assertIn("You are an assistant.", serialized)
 
     def test_after_model_emits_response_text_when_debug_enabled(self) -> None:
         callback_context = pytypes.SimpleNamespace(
@@ -61,15 +60,15 @@ class DebugCallbacksTests(unittest.TestCase):
         )
 
         with patch.dict(os.environ, {"SENTIENTAGENT_V2_DEBUG": "1"}, clear=False):
-            with patch("sentientagent_v2.logging_utils._loguru_logger", None):
-                buf = io.StringIO()
-                with redirect_stderr(buf):
-                    result = after_model_debug_callback(callback_context, llm_response)
+            with patch("sentientagent_v2.runtime.debug_callbacks.emit_debug") as mocked_emit:
+                result = after_model_debug_callback(callback_context, llm_response)
 
         self.assertIsNone(result)
-        log = buf.getvalue()
-        self.assertIn("llm.after_model", log)
-        self.assertIn("Tomorrow is cloudy.", log)
+        mocked_emit.assert_called_once()
+        tag, payload = mocked_emit.call_args.args
+        self.assertEqual(tag, "llm.after_model")
+        serialized = json.dumps(payload, ensure_ascii=False)
+        self.assertIn("Tomorrow is cloudy.", serialized)
 
     def test_callbacks_are_silent_when_debug_disabled(self) -> None:
         callback_context = pytypes.SimpleNamespace(session=pytypes.SimpleNamespace(id="s-3"))
@@ -89,12 +88,11 @@ class DebugCallbacksTests(unittest.TestCase):
         )
 
         with patch.dict(os.environ, {"SENTIENTAGENT_V2_DEBUG": "0"}, clear=False):
-            buf = io.StringIO()
-            with redirect_stderr(buf):
+            with patch("sentientagent_v2.runtime.debug_callbacks.emit_debug") as mocked_emit:
                 before_model_debug_callback(callback_context, llm_request)
                 after_model_debug_callback(callback_context, llm_response)
 
-        self.assertEqual(buf.getvalue(), "")
+        mocked_emit.assert_not_called()
 
     def test_before_model_patches_missing_function_call_id_when_debug_disabled(self) -> None:
         callback_context = pytypes.SimpleNamespace(invocation_id="inv-fc", session=pytypes.SimpleNamespace(id="s-4"))
@@ -118,11 +116,8 @@ class DebugCallbacksTests(unittest.TestCase):
         )
 
         with patch.dict(os.environ, {"SENTIENTAGENT_V2_DEBUG": "0"}, clear=False):
-            buf = io.StringIO()
-            with redirect_stderr(buf):
-                before_model_debug_callback(callback_context, llm_request)
+            before_model_debug_callback(callback_context, llm_request)
 
-        self.assertEqual(buf.getvalue(), "")
         self.assertIsInstance(function_call.id, str)
         self.assertTrue(function_call.id.startswith("t_"))
         self.assertLessEqual(len(function_call.id), 40)
