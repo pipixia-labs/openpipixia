@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import platform
-from datetime import datetime
 
 from google.adk.agents import LlmAgent
 
@@ -26,14 +25,12 @@ from .tools import (
 
 
 def _build_instruction() -> str:
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
     runtime = f"{platform.system()} {platform.machine()} / Python"
     workspace = os.getenv("SENTIENTAGENT_V2_WORKSPACE", os.getcwd())
     skills_summary = get_registry().build_summary()
 
     return f"""You are sentientagent_v2, a lightweight skills-first coding assistant.
 
-Current time: {now}
 Runtime: {runtime}
 Workspace: {workspace}
 
@@ -49,6 +46,8 @@ Rules:
 - Do not invent skill content. Always read SKILL.md first.
 - Use `message_image(path=..., caption=...)` when a local image file should be delivered to the current channel.
 - Prefer these built-in tools for actions: `read_file`, `write_file`, `edit_file`, `list_dir`, `exec`, `web_search`, `web_fetch`, `message`, `message_image`, `cron`.
+- Current time is injected into each request payload (e.g. `Current request time`).
+  For relative scheduling, always use that injected request time as `now`.
 
 Available skills:
 {skills_summary}

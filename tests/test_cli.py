@@ -71,9 +71,11 @@ class CLITests(unittest.TestCase):
         fake_event_2 = pytypes.SimpleNamespace(
             content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="final answer")])
         )
+        captured: dict[str, object] = {}
 
         class _FakeRunner:
             async def run_async(self, **kwargs):
+                captured.update(kwargs)
                 yield fake_event_1
                 yield fake_event_2
 
@@ -87,6 +89,11 @@ class CLITests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         mocked_print.assert_called_with("final answer")
+        request = captured["new_message"]
+        text = request.parts[0].text
+        self.assertIn("Current request time:", text)
+        self.assertIn("Use this as the reference 'now' for relative time expressions", text)
+        self.assertIn("\n\nhello", text)
 
     def test_cmd_message_merges_stream_snapshots(self) -> None:
         from sentientagent_v2 import cli

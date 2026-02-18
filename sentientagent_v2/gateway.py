@@ -14,6 +14,7 @@ from .bus.queue import MessageBus
 from .channels.manager import ChannelManager
 from .runtime.adk_utils import extract_text, merge_text_stream
 from .runtime.cron_service import CronJob, CronService
+from .runtime.message_time import append_execution_time, inject_request_time
 from .runtime.runner_factory import create_runner
 from .runtime.tool_context import route_context
 from .security import load_security_policy
@@ -52,7 +53,8 @@ class Gateway:
         """Execute a scheduled cron job through the shared ADK runner."""
         target_channel = job.payload.channel or "local"
         target_chat_id = job.payload.to or "default"
-        request = types.UserContent(parts=[types.Part.from_text(text=job.payload.message)])
+        prompt = append_execution_time(job.payload.message)
+        request = types.UserContent(parts=[types.Part.from_text(text=prompt)])
         final = ""
         with route_context(target_channel, target_chat_id):
             async for event in self.runner.run_async(
@@ -104,7 +106,8 @@ class Gateway:
             await self.channel_manager.stop_all()
 
     async def process_message(self, msg: InboundMessage) -> OutboundMessage:
-        request = types.UserContent(parts=[types.Part.from_text(text=msg.content)])
+        prompt = inject_request_time(msg.content, received_at=msg.timestamp)
+        request = types.UserContent(parts=[types.Part.from_text(text=prompt)])
         final = ""
         # Route context lets tools like `message(...)` infer the current target.
         with route_context(msg.channel, msg.chat_id):

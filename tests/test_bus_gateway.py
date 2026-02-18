@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import types as pytypes
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
 from sentientagent_v2.bus.events import InboundMessage, OutboundMessage
@@ -35,21 +36,34 @@ class GatewayTests(unittest.TestCase):
         fake_event_2 = pytypes.SimpleNamespace(
             content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="gateway answer")])
         )
+        captured: dict[str, object] = {}
 
         class _FakeRunner:
             async def run_async(self, **kwargs):
+                captured.update(kwargs)
                 yield fake_event_1
                 yield fake_event_2
 
         fake_agent = pytypes.SimpleNamespace(name="sentientagent_v2")
         with patch("sentientagent_v2.gateway.create_runner", return_value=(_FakeRunner(), object())):
             gateway = Gateway(agent=fake_agent, app_name="sentientagent_v2", bus=MessageBus())
-            inbound = InboundMessage(channel="local", sender_id="u1", chat_id="c1", content="hello")
+            inbound = InboundMessage(
+                channel="local",
+                sender_id="u1",
+                chat_id="c1",
+                content="hello",
+                timestamp=datetime(2026, 2, 18, 9, 30, tzinfo=timezone.utc),
+            )
             outbound = asyncio.run(gateway.process_message(inbound))
 
         self.assertEqual(outbound.channel, "local")
         self.assertEqual(outbound.chat_id, "c1")
         self.assertEqual(outbound.content, "gateway answer")
+        request = captured["new_message"]
+        text = request.parts[0].text
+        self.assertIn("Current request time: 2026-02-18T09:30:00+00:00 (UTC)", text)
+        self.assertIn("Use this as the reference 'now' for relative time expressions", text)
+        self.assertIn("\n\nhello", text)
 
     def test_process_message_merges_stream_snapshots(self) -> None:
         fake_event_1 = pytypes.SimpleNamespace(
@@ -123,9 +137,11 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
         fake_event = pytypes.SimpleNamespace(
             content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="cron answer")])
         )
+        captured: dict[str, object] = {}
 
         class _FakeRunner:
             async def run_async(self, **kwargs):
+                captured.update(kwargs)
                 yield fake_event
 
         fake_agent = pytypes.SimpleNamespace(name="sentientagent_v2")
@@ -145,6 +161,10 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
         )
         result = await gateway._run_cron_job(job)
         self.assertEqual(result, "cron answer")
+        request = captured["new_message"]
+        text = request.parts[0].text
+        self.assertTrue(text.startswith("do work"))
+        self.assertIn("Current time:", text)
 
         outbound = await asyncio.wait_for(bus.consume_outbound(), timeout=0.5)
         self.assertEqual(outbound.channel, "local")

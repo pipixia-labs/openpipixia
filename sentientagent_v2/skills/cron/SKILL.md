@@ -45,3 +45,21 @@ cron(action="remove", job_id="abc123")
 | every day at 8am | cron_expr: "0 8 * * *" |
 | weekdays at 5pm | cron_expr: "0 17 * * 1-5" |
 | at a specific time | at: ISO datetime string (compute from current time) |
+
+## Relative Time Rule (Important)
+
+For requests like "in 20 minutes", "after 2 hours", or "过2分钟/1小时后执行",
+the reference point MUST be the **current conversation message time** (the time
+this user request is received), NOT gateway startup time.
+
+When converting relative requests to `at`, first get the current time "now",
+then compute `at = now + delta`, and pass that absolute ISO datetime to:
+
+```
+cron(action="add", message="...", at="<ISO datetime computed from current request time>")
+```
+
+Example:
+- User says: "2分钟之后，发一个时间到了的消息给我"
+- Correct behavior: compute from current request time, then create a one-time
+  `at` job based on that computed timestamp.

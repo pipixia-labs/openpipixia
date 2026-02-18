@@ -28,6 +28,7 @@ from .env_utils import env_enabled
 from .provider import normalize_model_name, normalize_provider_name, provider_api_key_env, validate_provider_runtime
 from .runtime.adk_utils import extract_text, merge_text_stream
 from .runtime.cron_service import CronSchedule, CronService
+from .runtime.message_time import inject_request_time
 from .runtime.runner_factory import create_runner
 from .runtime.session_service import load_session_config
 from .security import load_security_policy
@@ -236,7 +237,8 @@ def _cmd_message(message: str, user_id: str, session_id: str) -> int:
     async def _run_once() -> str:
         app_name = root_agent.name
         runner, _ = create_runner(agent=root_agent, app_name=app_name)
-        request = types.UserContent(parts=[types.Part.from_text(text=message)])
+        prompt = inject_request_time(message, received_at=dt.datetime.now().astimezone())
+        request = types.UserContent(parts=[types.Part.from_text(text=prompt)])
 
         final = ""
         async for event in runner.run_async(user_id=user_id, session_id=session_id, new_message=request):
