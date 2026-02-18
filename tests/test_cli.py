@@ -8,6 +8,7 @@ import tempfile
 import types as pytypes
 import unittest
 import asyncio
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -208,6 +209,43 @@ class CLITests(unittest.TestCase):
                 issues = asyncio.run(cli._required_mcp_preflight(toolsets))
         self.assertTrue(issues)
         self.assertIn("required MCP server 'filesystem' failed", issues[0])
+
+    def test_cmd_gateway_exits_when_required_mcp_preflight_fails(self) -> None:
+        from sentientagent_v2 import cli
+
+        fake_agent = pytypes.SimpleNamespace(name="sentientagent_v2", tools=[])
+        fake_agent_module = pytypes.SimpleNamespace(root_agent=fake_agent)
+
+        class _UnexpectedGateway:
+            def __init__(self, *args, **kwargs):
+                raise AssertionError("Gateway should not be constructed when MCP preflight fails")
+
+        fake_gateway_module = pytypes.SimpleNamespace(Gateway=_UnexpectedGateway)
+
+        with patch.dict(
+            sys.modules,
+            {
+                "sentientagent_v2.agent": fake_agent_module,
+                "sentientagent_v2.gateway": fake_gateway_module,
+            },
+        ):
+            with patch.object(cli, "parse_enabled_channels", return_value=["local"]):
+                with patch.object(cli, "validate_channel_setup", return_value=[]):
+                    with patch.object(
+                        cli,
+                        "_required_mcp_preflight",
+                        new=AsyncMock(return_value=["required MCP failed"]),
+                    ):
+                        with patch.object(cli.logger, "info") as mocked_info:
+                            code = cli._cmd_gateway(
+                                channels="local",
+                                sender_id="u1",
+                                chat_id="c1",
+                                interactive_local=False,
+                            )
+        self.assertEqual(code, 1)
+        messages = [call.args[0] for call in mocked_info.call_args_list if call.args]
+        self.assertIn("[doctor] required MCP failed", messages)
 
     def test_cmd_onboard_creates_config_and_workspace(self) -> None:
         from sentientagent_v2 import cli

@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,7 @@ from .config import (
     save_config,
 )
 from .env_utils import env_enabled
-from .mcp_registry import SafeMcpToolset, build_mcp_toolsets_from_env, probe_mcp_toolsets, summarize_mcp_toolsets
+from .mcp_registry import ManagedMcpToolset, build_mcp_toolsets_from_env, probe_mcp_toolsets, summarize_mcp_toolsets
 from .provider import normalize_model_name, normalize_provider_name, provider_api_key_env, validate_provider_runtime
 from .runtime.adk_utils import extract_text, merge_text_stream
 from .runtime.cron_service import CronService
@@ -73,6 +74,39 @@ def _read_env_float(name: str, default: float, *, minimum: float, maximum: float
     except Exception:
         value = default
     return min(max(value, minimum), maximum)
+
+
+@dataclass(frozen=True)
+class McpProbePolicy:
+    """Policy knobs for MCP health checks."""
+
+    timeout_seconds: float
+    retry_attempts: int
+    retry_backoff_seconds: float
+
+
+def _load_mcp_probe_policy(*, timeout_env_name: str, timeout_default: float) -> McpProbePolicy:
+    """Load MCP probe policy from env with one consistent rule set."""
+    return McpProbePolicy(
+        timeout_seconds=_read_env_float(
+            timeout_env_name,
+            timeout_default,
+            minimum=1.0,
+            maximum=30.0,
+        ),
+        retry_attempts=_read_env_int(
+            "SENTIENTAGENT_V2_MCP_PROBE_RETRY_ATTEMPTS",
+            2,
+            minimum=1,
+            maximum=5,
+        ),
+        retry_backoff_seconds=_read_env_float(
+            "SENTIENTAGENT_V2_MCP_PROBE_RETRY_BACKOFF_SECONDS",
+            0.3,
+            minimum=0.0,
+            maximum=5.0,
+        ),
+    )
 
 
 def _cmd_skills() -> int:
@@ -128,23 +162,9 @@ def _cmd_doctor(*, output_json: bool = False, verbose: bool = False) -> int:
     security_policy = load_security_policy()
     mcp_toolsets = build_mcp_toolsets_from_env(log_registered=False)
     mcp_summaries = summarize_mcp_toolsets(mcp_toolsets)
-    mcp_timeout_seconds = _read_env_float(
-        "SENTIENTAGENT_V2_MCP_DOCTOR_TIMEOUT_SECONDS",
-        5.0,
-        minimum=1.0,
-        maximum=30.0,
-    )
-    mcp_retry_attempts = _read_env_int(
-        "SENTIENTAGENT_V2_MCP_PROBE_RETRY_ATTEMPTS",
-        2,
-        minimum=1,
-        maximum=5,
-    )
-    mcp_retry_backoff_seconds = _read_env_float(
-        "SENTIENTAGENT_V2_MCP_PROBE_RETRY_BACKOFF_SECONDS",
-        0.3,
-        minimum=0.0,
-        maximum=5.0,
+    mcp_probe_policy = _load_mcp_probe_policy(
+        timeout_env_name="SENTIENTAGENT_V2_MCP_DOCTOR_TIMEOUT_SECONDS",
+        timeout_default=5.0,
     )
     mcp_probe_results: list[dict[str, object]] = []
     if mcp_toolsets:
@@ -152,9 +172,9 @@ def _cmd_doctor(*, output_json: bool = False, verbose: bool = False) -> int:
             mcp_probe_results = asyncio.run(
                 probe_mcp_toolsets(
                     mcp_toolsets,
-                    timeout_seconds=mcp_timeout_seconds,
-                    retry_attempts=mcp_retry_attempts,
-                    retry_backoff_seconds=mcp_retry_backoff_seconds,
+                    timeout_seconds=mcp_probe_policy.timeout_seconds,
+                    retry_attempts=mcp_probe_policy.retry_attempts,
+                    retry_backoff_seconds=mcp_probe_policy.retry_backoff_seconds,
                 )
             )
         except Exception as exc:
@@ -199,9 +219,9 @@ def _cmd_doctor(*, output_json: bool = False, verbose: bool = False) -> int:
             "configured": mcp_summaries,
             "health": mcp_probe_results,
             "probe": {
-                "timeout_seconds": mcp_timeout_seconds,
-                "retry_attempts": mcp_retry_attempts,
-                "retry_backoff_seconds": mcp_retry_backoff_seconds,
+                "timeout_seconds": mcp_probe_policy.timeout_seconds,
+                "retry_attempts": mcp_probe_policy.retry_attempts,
+                "retry_backoff_seconds": mcp_probe_policy.retry_backoff_seconds,
             },
         },
     }
@@ -335,34 +355,20 @@ async def _required_mcp_preflight(agent_tools: list[object]) -> list[str]:
     required_toolsets = [
         tool
         for tool in agent_tools
-        if isinstance(tool, SafeMcpToolset) and str(getattr(tool, "_sentientagent_server_name", "")) in required_set
+        if isinstance(tool, ManagedMcpToolset) and tool.meta.name in required_set
     ]
     if not required_toolsets:
         return issues
 
-    timeout_seconds = _read_env_float(
-        "SENTIENTAGENT_V2_MCP_GATEWAY_TIMEOUT_SECONDS",
-        5.0,
-        minimum=1.0,
-        maximum=30.0,
-    )
-    retry_attempts = _read_env_int(
-        "SENTIENTAGENT_V2_MCP_PROBE_RETRY_ATTEMPTS",
-        2,
-        minimum=1,
-        maximum=5,
-    )
-    retry_backoff_seconds = _read_env_float(
-        "SENTIENTAGENT_V2_MCP_PROBE_RETRY_BACKOFF_SECONDS",
-        0.3,
-        minimum=0.0,
-        maximum=5.0,
+    mcp_probe_policy = _load_mcp_probe_policy(
+        timeout_env_name="SENTIENTAGENT_V2_MCP_GATEWAY_TIMEOUT_SECONDS",
+        timeout_default=5.0,
     )
     results = await probe_mcp_toolsets(
         required_toolsets,
-        timeout_seconds=timeout_seconds,
-        retry_attempts=retry_attempts,
-        retry_backoff_seconds=retry_backoff_seconds,
+        timeout_seconds=mcp_probe_policy.timeout_seconds,
+        retry_attempts=mcp_probe_policy.retry_attempts,
+        retry_backoff_seconds=mcp_probe_policy.retry_backoff_seconds,
     )
     for result in results:
         if str(result.get("status")) == "ok":
