@@ -17,24 +17,21 @@ Treat it as executable task instruction for the agent, not as a title or raw not
 When building `cron(action="add", ...)`:
 
 1. `message` 描述的是一个任务，也就是在 xx 时间，系统需要做的事情。所以在message字段，智能体需要填充一个任务，这个任务一定是一个动作来描述的，而不是仅仅是一个文本。
-系统需要的格式为：
-```text
-这个消息来自cron任务。你需要做的任务为："发送 yy 消息" 或者 “执行 yy 任务”、“”
-```
+系统需要的格式为：`发送 yy 消息`或者 `执行 yy 任务`。
 2. For reminder-like jobs, explicitly say whether output must be exact text.
 3. Avoid ambiguous `message` values like only a number or a noun phrase.
 
 Bad examples (ambiguous):
 ```
 cron(action="add", message="139121235123", at="<ISO>")
-cron(action="add", message="meeting", every_seconds=1200)
 ```
 
 Good examples (explicit action):
 ```
-cron(action="add", message="这个消息来自cron任务。你需要做的任务为：只输出“时间到了"，不要添加其他内容。", at="<ISO>")
-cron(action="add", message="这个消息来自cron任务。你需要做的任务为：只输出"139121235123"。不要解释，不要改写。", at="<ISO>")
-cron(action="add", message="这个消息来自cron任务。你需要做的任务为：检查项目状态并输出三条摘要，每条不超过20字。", every_seconds=600)
+cron(action="add", message="打开word", at="<ISO>")
+cron(action="add", message="只输出“时间到了"，不要添加其他内容。", at="<ISO>")
+cron(action="add", message="只输出"139121235123"。不要解释，不要改写。", at="<ISO>")
+cron(action="add", message="检查项目状态并输出三条摘要，每条不超过20字。", every_seconds=600)
 ```
 
 ## Scheduling Modes

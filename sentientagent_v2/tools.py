@@ -749,6 +749,17 @@ def _format_job_schedule(job: Any) -> str:
     return format_schedule(getattr(job, "schedule", None))
 
 
+_CRON_MESSAGE_PREFIX = "message from cron task: "
+
+
+def _prefixed_cron_message(message: str) -> str:
+    """Ensure cron payload text carries a stable runtime-origin prefix."""
+    text = message.strip()
+    if text.startswith(_CRON_MESSAGE_PREFIX):
+        return text
+    return f"{_CRON_MESSAGE_PREFIX}{text}"
+
+
 def cron(
     action: str,
     message: str = "",
@@ -767,7 +778,9 @@ def cron(
         action: One of "add", "list", "remove".
         message: Prompt executed at trigger time (required for add). This is sent
             to the LLM as a new user message, so write it as an explicit
-            instruction, not just a loose label.
+            instruction, not just a loose label; message must be an executable
+            action instruction. The tool automatically prefixes it with
+            "message from cron task: " before persistence/execution.
         every_seconds: Fixed interval schedule in seconds (add mode).
         cron_expr: Cron schedule expression, e.g. "0 9 * * 1-5" (add mode).
         at: One-time absolute ISO datetime string, e.g. "2026-02-18T17:30:00" (add mode).
@@ -846,13 +859,14 @@ def cron(
             return _ret("tool.cron.output", "Error: failed to parse schedule")
         schedule = parsed.schedule
         delete_after_run = parsed.delete_after_run
+        prefixed_message = _prefixed_cron_message(message)
 
         target_channel, target_chat_id = _resolve_route(channel, chat_id)
         deliver_enabled = True if deliver is None else bool(deliver)
         job = service.add_job(
             name=message[:30],
             schedule=schedule,
-            message=message,
+            message=prefixed_message,
             deliver=deliver_enabled,
             channel=target_channel,
             to=target_chat_id,

@@ -128,6 +128,7 @@ class ToolsTests(unittest.TestCase):
             self.assertTrue(first["payload"]["deliver"])
             self.assertEqual(first["payload"]["channel"], "telegram")
             self.assertEqual(first["payload"]["to"], "u2")
+            self.assertEqual(first["payload"]["message"], "message from cron task: remind me")
 
             listing = cron(action="list")
             self.assertIn("Scheduled jobs", listing)
