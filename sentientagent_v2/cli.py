@@ -12,7 +12,7 @@ import subprocess
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from google.genai import types
 from loguru import logger
@@ -660,6 +660,33 @@ def _cmd_cron_status() -> int:
     return 0
 
 
+def _dispatch_cron_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Dispatch cron subcommands from parsed argparse namespace."""
+    cron_handlers: dict[str, Callable[[], int]] = {
+        "list": lambda: _cmd_cron_list(include_disabled=args.all),
+        "add": lambda: _cmd_cron_add(
+            name=args.name,
+            message=args.message,
+            every=args.every,
+            cron_expr=args.cron_expr,
+            tz=args.tz,
+            at=args.at,
+            deliver=args.deliver,
+            to=args.to,
+            channel=args.channel,
+        ),
+        "remove": lambda: _cmd_cron_remove(args.job_id),
+        "enable": lambda: _cmd_cron_enable(args.job_id, disable=args.disable),
+        "run": lambda: _cmd_cron_run(args.job_id, force=args.force),
+        "status": _cmd_cron_status,
+    }
+    handler = cron_handlers.get(args.cron_command)
+    if handler is None:
+        parser.print_help()
+        return 2
+    return handler()
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="sentientagent_v2",
@@ -759,52 +786,28 @@ def main(argv: list[str] | None = None) -> None:
     if args.command is None and args.message:
         sid = args.session_id or uuid.uuid4().hex[:12]
         code = _cmd_message(args.message, user_id=args.user_id, session_id=sid)
-    elif args.command == "onboard":
-        code = _cmd_onboard(force=args.force)
-    elif args.command == "skills":
-        code = _cmd_skills()
-    elif args.command == "doctor":
-        code = _cmd_doctor(output_json=args.output_json, verbose=args.verbose)
-    elif args.command == "run":
-        code = _cmd_run(args.adk_args)
-    elif args.command == "gateway-local":
-        code = _cmd_gateway_local(sender_id=args.sender_id, chat_id=args.chat_id)
-    elif args.command == "gateway":
-        code = _cmd_gateway(
-            channels=args.channels,
-            sender_id=args.sender_id,
-            chat_id=args.chat_id,
-            interactive_local=args.interactive_local,
-        )
     elif args.command == "cron":
-        if args.cron_command == "list":
-            code = _cmd_cron_list(include_disabled=args.all)
-        elif args.cron_command == "add":
-            code = _cmd_cron_add(
-                name=args.name,
-                message=args.message,
-                every=args.every,
-                cron_expr=args.cron_expr,
-                tz=args.tz,
-                at=args.at,
-                deliver=args.deliver,
-                to=args.to,
-                channel=args.channel,
-            )
-        elif args.cron_command == "remove":
-            code = _cmd_cron_remove(args.job_id)
-        elif args.cron_command == "enable":
-            code = _cmd_cron_enable(args.job_id, disable=args.disable)
-        elif args.cron_command == "run":
-            code = _cmd_cron_run(args.job_id, force=args.force)
-        elif args.cron_command == "status":
-            code = _cmd_cron_status()
-        else:
+        code = _dispatch_cron_command(args, parser)
+    else:
+        handlers: dict[str, Callable[[], int]] = {
+            "onboard": lambda: _cmd_onboard(force=args.force),
+            "skills": _cmd_skills,
+            "doctor": lambda: _cmd_doctor(output_json=args.output_json, verbose=args.verbose),
+            "run": lambda: _cmd_run(args.adk_args),
+            "gateway-local": lambda: _cmd_gateway_local(sender_id=args.sender_id, chat_id=args.chat_id),
+            "gateway": lambda: _cmd_gateway(
+                channels=args.channels,
+                sender_id=args.sender_id,
+                chat_id=args.chat_id,
+                interactive_local=args.interactive_local,
+            ),
+        }
+        handler = handlers.get(args.command)
+        if handler is None:
             parser.print_help()
             code = 2
-    else:
-        parser.print_help()
-        code = 2
+        else:
+            code = handler()
 
     raise SystemExit(code)
 

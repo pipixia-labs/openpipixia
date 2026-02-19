@@ -48,8 +48,13 @@ def _validate_local() -> list[str]:
     return []
 
 
+def _env_csv(name: str) -> list[str]:
+    """Read comma-separated env value into trimmed non-empty tokens."""
+    return [item.strip() for item in os.getenv(name, "").split(",") if item.strip()]
+
+
 def _build_feishu(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
-    allow_from = [item.strip() for item in os.getenv("FEISHU_ALLOW_FROM", "").split(",") if item.strip()]
+    allow_from = _env_csv("FEISHU_ALLOW_FROM")
     return FeishuChannel(
         bus=bus,
         app_id=os.getenv("FEISHU_APP_ID", "").strip(),
@@ -72,7 +77,7 @@ def _validate_feishu() -> list[str]:
 
 
 def _build_telegram(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
-    allow_from = [item.strip() for item in os.getenv("TELEGRAM_ALLOW_FROM", "").split(",") if item.strip()]
+    allow_from = _env_csv("TELEGRAM_ALLOW_FROM")
     return TelegramChannel(
         bus=bus,
         token=os.getenv("TELEGRAM_BOT_TOKEN", "").strip(),
@@ -88,8 +93,8 @@ def _validate_telegram() -> list[str]:
 
 
 def _build_discord(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
-    allow_from = [item.strip() for item in os.getenv("DISCORD_ALLOW_FROM", "").split(",") if item.strip()]
-    poll_channels = [item.strip() for item in os.getenv("DISCORD_POLL_CHANNELS", "").split(",") if item.strip()]
+    allow_from = _env_csv("DISCORD_ALLOW_FROM")
+    poll_channels = _env_csv("DISCORD_POLL_CHANNELS")
     return DiscordChannel(
         bus=bus,
         token=os.getenv("DISCORD_BOT_TOKEN", "").strip(),
@@ -107,7 +112,7 @@ def _validate_discord() -> list[str]:
 
 
 def _build_dingtalk(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
-    allow_from = [item.strip() for item in os.getenv("DINGTALK_ALLOW_FROM", "").split(",") if item.strip()]
+    allow_from = _env_csv("DINGTALK_ALLOW_FROM")
     return DingTalkChannel(
         bus=bus,
         client_id=os.getenv("DINGTALK_CLIENT_ID", "").strip(),
@@ -130,7 +135,7 @@ def _validate_dingtalk() -> list[str]:
 
 
 def _build_whatsapp(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
-    allow_from = [item.strip() for item in os.getenv("WHATSAPP_ALLOW_FROM", "").split(",") if item.strip()]
+    allow_from = _env_csv("WHATSAPP_ALLOW_FROM")
     return WhatsAppChannel(
         bus=bus,
         bridge_url=os.getenv("WHATSAPP_BRIDGE_URL", "").strip(),
@@ -150,9 +155,9 @@ def _validate_whatsapp() -> list[str]:
 
 
 def _build_mochat(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
-    allow_from = [item.strip() for item in os.getenv("MOCHAT_ALLOW_FROM", "").split(",") if item.strip()]
-    sessions = [item.strip() for item in os.getenv("MOCHAT_SESSIONS", "").split(",") if item.strip()]
-    panels = [item.strip() for item in os.getenv("MOCHAT_PANELS", "").split(",") if item.strip()]
+    allow_from = _env_csv("MOCHAT_ALLOW_FROM")
+    sessions = _env_csv("MOCHAT_SESSIONS")
+    panels = _env_csv("MOCHAT_PANELS")
     return MochatChannel(
         bus=bus,
         base_url=os.getenv("MOCHAT_BASE_URL", "").strip(),
@@ -191,7 +196,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _build_email(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
-    allow_from = [item.strip() for item in os.getenv("EMAIL_ALLOW_FROM", "").split(",") if item.strip()]
+    allow_from = _env_csv("EMAIL_ALLOW_FROM")
     return EmailChannel(
         bus=bus,
         consent_granted=_env_flag("EMAIL_CONSENT_GRANTED", default=False),
@@ -230,8 +235,8 @@ def _validate_email() -> list[str]:
 
 
 def _build_slack(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
-    allow_from = [item.strip() for item in os.getenv("SLACK_ALLOW_FROM", "").split(",") if item.strip()]
-    poll_channels = [item.strip() for item in os.getenv("SLACK_POLL_CHANNELS", "").split(",") if item.strip()]
+    allow_from = _env_csv("SLACK_ALLOW_FROM")
+    poll_channels = _env_csv("SLACK_POLL_CHANNELS")
     return SlackChannel(
         bus=bus,
         bot_token=os.getenv("SLACK_BOT_TOKEN", "").strip(),
@@ -251,7 +256,7 @@ def _validate_slack() -> list[str]:
 
 
 def _build_qq(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
-    allow_from = [item.strip() for item in os.getenv("QQ_ALLOW_FROM", "").split(",") if item.strip()]
+    allow_from = _env_csv("QQ_ALLOW_FROM")
     return QQChannel(
         bus=bus,
         app_id=os.getenv("QQ_APP_ID", "").strip(),

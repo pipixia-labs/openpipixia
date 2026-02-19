@@ -349,78 +349,49 @@ def _resolve_mcp_servers_json(cfg: dict[str, Any]) -> str:
     return json.dumps(raw, ensure_ascii=False, separators=(",", ":"))
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    """Return mapping value as dict, otherwise an empty dict."""
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: Any) -> list[Any]:
+    """Return sequence value as list, otherwise an empty list."""
+    return value if isinstance(value, list) else []
+
+
+def _channel_config(channels: dict[str, Any], name: str) -> dict[str, Any]:
+    """Read one channel section as dict with safe fallback."""
+    return _as_dict(channels.get(name))
+
+
 def config_to_env(config: dict[str, Any]) -> dict[str, str]:
     """Map config payload into runtime environment variables."""
     cfg = normalize_config(config)
-    agent = cfg.get("agent", {})
-    session = cfg.get("session", {})
-    channels = cfg.get("channels", {})
-    feishu = channels.get("feishu", {}) if isinstance(channels, dict) else {}
-    if not isinstance(feishu, dict):
-        feishu = {}
-    feishu_allow_from = feishu.get("allowFrom", [])
-    if not isinstance(feishu_allow_from, list):
-        feishu_allow_from = []
-    telegram = channels.get("telegram", {}) if isinstance(channels, dict) else {}
-    if not isinstance(telegram, dict):
-        telegram = {}
-    telegram_allow_from = telegram.get("allowFrom", [])
-    if not isinstance(telegram_allow_from, list):
-        telegram_allow_from = []
-    whatsapp = channels.get("whatsapp", {}) if isinstance(channels, dict) else {}
-    if not isinstance(whatsapp, dict):
-        whatsapp = {}
-    whatsapp_allow_from = whatsapp.get("allowFrom", [])
-    if not isinstance(whatsapp_allow_from, list):
-        whatsapp_allow_from = []
-    discord = channels.get("discord", {}) if isinstance(channels, dict) else {}
-    if not isinstance(discord, dict):
-        discord = {}
-    discord_allow_from = discord.get("allowFrom", [])
-    if not isinstance(discord_allow_from, list):
-        discord_allow_from = []
-    discord_poll_channels = discord.get("pollChannels", [])
-    if not isinstance(discord_poll_channels, list):
-        discord_poll_channels = []
-    mochat = channels.get("mochat", {}) if isinstance(channels, dict) else {}
-    if not isinstance(mochat, dict):
-        mochat = {}
-    mochat_allow_from = mochat.get("allowFrom", [])
-    if not isinstance(mochat_allow_from, list):
-        mochat_allow_from = []
-    mochat_sessions = mochat.get("sessions", [])
-    if not isinstance(mochat_sessions, list):
-        mochat_sessions = []
-    mochat_panels = mochat.get("panels", [])
-    if not isinstance(mochat_panels, list):
-        mochat_panels = []
-    dingtalk = channels.get("dingtalk", {}) if isinstance(channels, dict) else {}
-    if not isinstance(dingtalk, dict):
-        dingtalk = {}
-    dingtalk_allow_from = dingtalk.get("allowFrom", [])
-    if not isinstance(dingtalk_allow_from, list):
-        dingtalk_allow_from = []
-    email = channels.get("email", {}) if isinstance(channels, dict) else {}
-    if not isinstance(email, dict):
-        email = {}
-    email_allow_from = email.get("allowFrom", [])
-    if not isinstance(email_allow_from, list):
-        email_allow_from = []
-    slack = channels.get("slack", {}) if isinstance(channels, dict) else {}
-    if not isinstance(slack, dict):
-        slack = {}
-    slack_allow_from = slack.get("allowFrom", [])
-    if not isinstance(slack_allow_from, list):
-        slack_allow_from = []
-    slack_poll_channels = slack.get("pollChannels", [])
-    if not isinstance(slack_poll_channels, list):
-        slack_poll_channels = []
-    qq = channels.get("qq", {}) if isinstance(channels, dict) else {}
-    if not isinstance(qq, dict):
-        qq = {}
-    qq_allow_from = qq.get("allowFrom", [])
-    if not isinstance(qq_allow_from, list):
-        qq_allow_from = []
+    agent = _as_dict(cfg.get("agent"))
+    session = _as_dict(cfg.get("session"))
+    channels = _as_dict(cfg.get("channels"))
+    feishu = _channel_config(channels, "feishu")
+    feishu_allow_from = _as_list(feishu.get("allowFrom"))
+    telegram = _channel_config(channels, "telegram")
+    telegram_allow_from = _as_list(telegram.get("allowFrom"))
+    whatsapp = _channel_config(channels, "whatsapp")
+    whatsapp_allow_from = _as_list(whatsapp.get("allowFrom"))
+    discord = _channel_config(channels, "discord")
+    discord_allow_from = _as_list(discord.get("allowFrom"))
+    discord_poll_channels = _as_list(discord.get("pollChannels"))
+    mochat = _channel_config(channels, "mochat")
+    mochat_allow_from = _as_list(mochat.get("allowFrom"))
+    mochat_sessions = _as_list(mochat.get("sessions"))
+    mochat_panels = _as_list(mochat.get("panels"))
+    dingtalk = _channel_config(channels, "dingtalk")
+    dingtalk_allow_from = _as_list(dingtalk.get("allowFrom"))
+    email = _channel_config(channels, "email")
+    email_allow_from = _as_list(email.get("allowFrom"))
+    slack = _channel_config(channels, "slack")
+    slack_allow_from = _as_list(slack.get("allowFrom"))
+    slack_poll_channels = _as_list(slack.get("pollChannels"))
+    qq = _channel_config(channels, "qq")
+    qq_allow_from = _as_list(qq.get("allowFrom"))
     provider_name, provider_enabled, model, provider_api_key = _resolve_provider(cfg)
     web_enabled, web_search_enabled, web_search_provider, web_search_max_results, web_search_api_key = _resolve_web(
         cfg
@@ -440,7 +411,7 @@ def config_to_env(config: dict[str, Any]) -> dict[str, str]:
         "SENTIENTAGENT_V2_WORKSPACE": str(agent.get("workspace", "")).strip(),
         "SENTIENTAGENT_V2_BUILTIN_SKILLS_DIR": str(agent.get("builtinSkillsDir", "")).strip(),
         "SENTIENTAGENT_V2_SESSION_DB_URL": str(session.get("dbUrl", "")).strip(),
-        "SENTIENTAGENT_V2_CHANNELS": _resolve_enabled_channels(channels if isinstance(channels, dict) else {}),
+        "SENTIENTAGENT_V2_CHANNELS": _resolve_enabled_channels(channels),
         "FEISHU_APP_ID": str(feishu.get("appId", "")).strip(),
         "FEISHU_APP_SECRET": str(feishu.get("appSecret", "")).strip(),
         "FEISHU_ENCRYPT_KEY": str(feishu.get("encryptKey", "")).strip(),

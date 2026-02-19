@@ -518,6 +518,27 @@ def _publish_outbound_if_configured(msg: OutboundMessage) -> bool:
     return True
 
 
+def _append_outbox_record(record: dict[str, Any]) -> Path:
+    """Append one outbound record to local outbox log and return the log path.
+
+    The function always injects a timestamp so callers only provide channel-
+    specific payload fields.
+    """
+    outbox = _workspace() / "messages" / "outbox.log"
+    outbox.parent.mkdir(parents=True, exist_ok=True)
+    ts = dt.datetime.now().isoformat(timespec="seconds")
+    line = json.dumps(
+        {
+            "timestamp": ts,
+            **record,
+        },
+        ensure_ascii=False,
+    )
+    with outbox.open("a", encoding="utf-8") as f:
+        f.write(line + "\n")
+    return outbox
+
+
 def message(content: str, channel: str | None = None, chat_id: str | None = None) -> str:
     """Send an outbound text message to a channel target.
 
@@ -544,15 +565,13 @@ def message(content: str, channel: str | None = None, chat_id: str | None = None
         _debug("tool.message.output", result)
         return result
 
-    outbox = _workspace() / "messages" / "outbox.log"
-    outbox.parent.mkdir(parents=True, exist_ok=True)
-    ts = dt.datetime.now().isoformat(timespec="seconds")
-    line = json.dumps(
-        {"timestamp": ts, "channel": target_channel, "chat_id": target_chat_id, "content": content},
-        ensure_ascii=False,
+    outbox = _append_outbox_record(
+        {
+            "channel": target_channel,
+            "chat_id": target_chat_id,
+            "content": content,
+        }
     )
-    with outbox.open("a", encoding="utf-8") as f:
-        f.write(line + "\n")
     result = f"Message recorded to {outbox}"
     _debug("tool.message.output", result)
     return result
@@ -705,21 +724,14 @@ def message_image(path: str, caption: str = "", channel: str | None = None, chat
         _debug("tool.message_image.output", result)
         return result
 
-    outbox = _workspace() / "messages" / "outbox.log"
-    outbox.parent.mkdir(parents=True, exist_ok=True)
-    ts = dt.datetime.now().isoformat(timespec="seconds")
-    line = json.dumps(
+    outbox = _append_outbox_record(
         {
-            "timestamp": ts,
             "channel": target_channel,
             "chat_id": target_chat_id,
             "content": caption,
             "metadata": outbound.metadata,
         },
-        ensure_ascii=False,
     )
-    with outbox.open("a", encoding="utf-8") as f:
-        f.write(line + "\n")
     result = f"Image message recorded to {outbox}"
     _debug("tool.message_image.output", result)
     return result
