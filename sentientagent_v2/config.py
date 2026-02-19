@@ -145,10 +145,15 @@ def default_config() -> dict[str, Any]:
                 "mode": "socket",
                 "botToken": "",
                 "appToken": "",
+                "defaultChannel": "",
                 "replyInThread": True,
                 "reactEmoji": "eyes",
                 "groupPolicy": "mention",
                 "groupAllowFrom": [],
+                "allowFrom": [],
+                "pollChannels": [],
+                "pollIntervalSeconds": 15,
+                "includeBots": False,
                 "dm": {
                     "enabled": True,
                     "policy": "open",
@@ -358,6 +363,15 @@ def config_to_env(config: dict[str, Any]) -> dict[str, str]:
     email_allow_from = email.get("allowFrom", [])
     if not isinstance(email_allow_from, list):
         email_allow_from = []
+    slack = channels.get("slack", {}) if isinstance(channels, dict) else {}
+    if not isinstance(slack, dict):
+        slack = {}
+    slack_allow_from = slack.get("allowFrom", [])
+    if not isinstance(slack_allow_from, list):
+        slack_allow_from = []
+    slack_poll_channels = slack.get("pollChannels", [])
+    if not isinstance(slack_poll_channels, list):
+        slack_poll_channels = []
     provider_name, provider_enabled, model, provider_api_key = _resolve_provider(cfg)
     web_enabled, web_search_enabled, web_search_provider, web_search_max_results, web_search_api_key = _resolve_web(
         cfg
@@ -405,6 +419,13 @@ def config_to_env(config: dict[str, Any]) -> dict[str, str]:
         "EMAIL_MARK_SEEN": "1" if is_enabled(email.get("markSeen"), default=True) else "0",
         "EMAIL_MAX_BODY_CHARS": str(email.get("maxBodyChars", 12000)),
         "EMAIL_ALLOW_FROM": ",".join(normalize_allowlist(email_allow_from)),
+        "SLACK_BOT_TOKEN": str(slack.get("botToken", "")).strip(),
+        "SLACK_APP_TOKEN": str(slack.get("appToken", "")).strip(),
+        "SLACK_DEFAULT_CHANNEL": str(slack.get("defaultChannel", "")).strip(),
+        "SLACK_ALLOW_FROM": ",".join(normalize_allowlist(slack_allow_from)),
+        "SLACK_POLL_CHANNELS": ",".join(normalize_allowlist(slack_poll_channels)),
+        "SLACK_POLL_INTERVAL_SECONDS": str(slack.get("pollIntervalSeconds", 15)),
+        "SLACK_INCLUDE_BOTS": "1" if is_enabled(slack.get("includeBots"), default=False) else "0",
         "BRAVE_API_KEY": web_search_api_key,
         "SENTIENTAGENT_V2_WEB_ENABLED": "1" if web_enabled else "0",
         "SENTIENTAGENT_V2_WEB_SEARCH_ENABLED": "1" if web_search_enabled else "0",

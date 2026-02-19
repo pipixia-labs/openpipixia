@@ -17,6 +17,7 @@ from .base import BaseChannel
 from .email import EmailChannel
 from .feishu import FEISHU_AVAILABLE, FeishuChannel
 from .local import LocalChannel
+from .slack import SlackChannel
 from .telegram import TelegramChannel
 
 
@@ -133,6 +134,27 @@ def _validate_email() -> list[str]:
     return issues
 
 
+def _build_slack(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
+    allow_from = [item.strip() for item in os.getenv("SLACK_ALLOW_FROM", "").split(",") if item.strip()]
+    poll_channels = [item.strip() for item in os.getenv("SLACK_POLL_CHANNELS", "").split(",") if item.strip()]
+    return SlackChannel(
+        bus=bus,
+        bot_token=os.getenv("SLACK_BOT_TOKEN", "").strip(),
+        app_token=os.getenv("SLACK_APP_TOKEN", "").strip(),
+        default_channel=os.getenv("SLACK_DEFAULT_CHANNEL", "").strip(),
+        allow_from=allow_from,
+        poll_channels=poll_channels,
+        poll_interval_seconds=_env_int("SLACK_POLL_INTERVAL_SECONDS", 15),
+        include_bots=_env_flag("SLACK_INCLUDE_BOTS", default=False),
+    )
+
+
+def _validate_slack() -> list[str]:
+    if os.getenv("SLACK_BOT_TOKEN", "").strip():
+        return []
+    return ["Missing SLACK_BOT_TOKEN for slack channel."]
+
+
 def _build_not_implemented(_bus: MessageBus, _local_writer: LocalWriter) -> None:
     # Channel is known by configuration but has no runtime adapter yet.
     return None
@@ -180,6 +202,11 @@ def _make_registry() -> dict[str, ChannelSpec]:
             name="email",
             build=_build_email,
             validate_setup=_validate_email,
+        ),
+        "slack": ChannelSpec(
+            name="slack",
+            build=_build_slack,
+            validate_setup=_validate_slack,
         ),
     }
 

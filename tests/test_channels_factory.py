@@ -44,6 +44,11 @@ class ChannelFactoryTests(unittest.TestCase):
         self.assertTrue(any("EMAIL_SMTP_HOST" in item for item in issues))
         self.assertFalse(any("Unsupported channels" in item for item in issues))
 
+    def test_validate_reports_slack_setup_issues(self) -> None:
+        issues = validate_channel_setup(["slack"])
+        self.assertTrue(any("SLACK_BOT_TOKEN" in item for item in issues))
+        self.assertFalse(any("Unsupported channels" in item for item in issues))
+
     def test_build_local_channel_manager(self) -> None:
         manager, local_channel = build_channel_manager(bus=MessageBus(), channel_names=["local"])
         self.assertIsNotNone(local_channel)
@@ -63,6 +68,11 @@ class ChannelFactoryTests(unittest.TestCase):
         os.environ["EMAIL_SMTP_PASSWORD"] = "pw"
         manager, _ = build_channel_manager(bus=MessageBus(), channel_names=["email"])
         self.assertIn("email", manager.channels)
+
+    def test_build_manager_registers_slack_when_configured(self) -> None:
+        os.environ["SLACK_BOT_TOKEN"] = "xoxb-token"
+        manager, _ = build_channel_manager(bus=MessageBus(), channel_names=["slack"])
+        self.assertIn("slack", manager.channels)
 
 
 if __name__ == "__main__":

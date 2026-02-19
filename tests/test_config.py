@@ -97,6 +97,11 @@ class ConfigTests(unittest.TestCase):
             cfg["channels"]["email"]["smtpPassword"] = "pw"
             cfg["channels"]["email"]["fromAddress"] = "bot@example.com"
             cfg["channels"]["email"]["allowFrom"] = ["a@example.com", "b@example.com"]
+            cfg["channels"]["slack"]["enabled"] = True
+            cfg["channels"]["slack"]["botToken"] = "xoxb-token"
+            cfg["channels"]["slack"]["appToken"] = "xapp-token"
+            cfg["channels"]["slack"]["allowFrom"] = ["U1", "U2"]
+            cfg["channels"]["slack"]["pollChannels"] = ["C1", "C2"]
             cfg["session"]["dbUrl"] = "sqlite+aiosqlite:////tmp/sessions.db"
             cfg["providers"]["google"]["apiKey"] = "google-key"
             cfg["web"]["search"]["enabled"] = False
@@ -118,6 +123,10 @@ class ConfigTests(unittest.TestCase):
             os.environ.pop("EMAIL_SMTP_PASSWORD", None)
             os.environ.pop("EMAIL_FROM_ADDRESS", None)
             os.environ.pop("EMAIL_ALLOW_FROM", None)
+            os.environ.pop("SLACK_BOT_TOKEN", None)
+            os.environ.pop("SLACK_APP_TOKEN", None)
+            os.environ.pop("SLACK_ALLOW_FROM", None)
+            os.environ.pop("SLACK_POLL_CHANNELS", None)
             os.environ.pop("SENTIENTAGENT_V2_SESSION_DB_URL", None)
             os.environ.pop("GOOGLE_API_KEY", None)
             os.environ.pop("BRAVE_API_KEY", None)
@@ -129,7 +138,7 @@ class ConfigTests(unittest.TestCase):
             loaded = bootstrap_env_from_config(path)
 
         self.assertIsNotNone(loaded)
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_CHANNELS"], "feishu,telegram,email")
+        self.assertEqual(os.environ["SENTIENTAGENT_V2_CHANNELS"], "feishu,telegram,email,slack")
         self.assertEqual(os.environ["FEISHU_APP_ID"], "app-id")
         self.assertEqual(os.environ["FEISHU_ALLOW_FROM"], "ou_1,ou_2")
         self.assertEqual(os.environ["TELEGRAM_BOT_TOKEN"], "tg-token")
@@ -141,6 +150,10 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(os.environ["EMAIL_SMTP_PASSWORD"], "pw")
         self.assertEqual(os.environ["EMAIL_FROM_ADDRESS"], "bot@example.com")
         self.assertEqual(os.environ["EMAIL_ALLOW_FROM"], "a@example.com,b@example.com")
+        self.assertEqual(os.environ["SLACK_BOT_TOKEN"], "xoxb-token")
+        self.assertEqual(os.environ["SLACK_APP_TOKEN"], "xapp-token")
+        self.assertEqual(os.environ["SLACK_ALLOW_FROM"], "U1,U2")
+        self.assertEqual(os.environ["SLACK_POLL_CHANNELS"], "C1,C2")
         self.assertEqual(os.environ["SENTIENTAGENT_V2_SESSION_DB_URL"], "sqlite+aiosqlite:////tmp/sessions.db")
         self.assertEqual(os.environ["GOOGLE_API_KEY"], "google-key")
         self.assertEqual(os.environ["SENTIENTAGENT_V2_WEB_SEARCH_ENABLED"], "0")
