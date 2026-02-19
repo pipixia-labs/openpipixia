@@ -101,6 +101,9 @@ def default_config() -> dict[str, Any]:
                 "gatewayUrl": "wss://gateway.discord.gg/?v=10&encoding=json",
                 "intents": 37377,
                 "allowFrom": [],
+                "pollChannels": [],
+                "pollIntervalSeconds": 10,
+                "includeBots": False,
             },
             "mochat": {
                 "enabled": False,
@@ -357,6 +360,15 @@ def config_to_env(config: dict[str, Any]) -> dict[str, str]:
     telegram_allow_from = telegram.get("allowFrom", [])
     if not isinstance(telegram_allow_from, list):
         telegram_allow_from = []
+    discord = channels.get("discord", {}) if isinstance(channels, dict) else {}
+    if not isinstance(discord, dict):
+        discord = {}
+    discord_allow_from = discord.get("allowFrom", [])
+    if not isinstance(discord_allow_from, list):
+        discord_allow_from = []
+    discord_poll_channels = discord.get("pollChannels", [])
+    if not isinstance(discord_poll_channels, list):
+        discord_poll_channels = []
     email = channels.get("email", {}) if isinstance(channels, dict) else {}
     if not isinstance(email, dict):
         email = {}
@@ -406,6 +418,11 @@ def config_to_env(config: dict[str, Any]) -> dict[str, str]:
         "TELEGRAM_BOT_TOKEN": str(telegram.get("token", "")).strip(),
         "TELEGRAM_ALLOW_FROM": ",".join(normalize_allowlist(telegram_allow_from)),
         "TELEGRAM_PROXY": str(telegram.get("proxy", "")).strip(),
+        "DISCORD_BOT_TOKEN": str(discord.get("token", "")).strip(),
+        "DISCORD_ALLOW_FROM": ",".join(normalize_allowlist(discord_allow_from)),
+        "DISCORD_POLL_CHANNELS": ",".join(normalize_allowlist(discord_poll_channels)),
+        "DISCORD_POLL_INTERVAL_SECONDS": str(discord.get("pollIntervalSeconds", 10)),
+        "DISCORD_INCLUDE_BOTS": "1" if is_enabled(discord.get("includeBots"), default=False) else "0",
         "EMAIL_CONSENT_GRANTED": "1" if is_enabled(email.get("consentGranted"), default=False) else "0",
         "EMAIL_IMAP_HOST": str(email.get("imapHost", "")).strip(),
         "EMAIL_IMAP_PORT": str(email.get("imapPort", 993)),

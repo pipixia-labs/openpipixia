@@ -14,6 +14,7 @@ from typing import Callable
 
 from ..bus.queue import MessageBus
 from .base import BaseChannel
+from .discord import DiscordChannel
 from .email import EmailChannel
 from .feishu import FEISHU_AVAILABLE, FeishuChannel
 from .local import LocalChannel
@@ -81,6 +82,25 @@ def _validate_telegram() -> list[str]:
     if os.getenv("TELEGRAM_BOT_TOKEN", "").strip():
         return []
     return ["Missing TELEGRAM_BOT_TOKEN for telegram channel."]
+
+
+def _build_discord(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
+    allow_from = [item.strip() for item in os.getenv("DISCORD_ALLOW_FROM", "").split(",") if item.strip()]
+    poll_channels = [item.strip() for item in os.getenv("DISCORD_POLL_CHANNELS", "").split(",") if item.strip()]
+    return DiscordChannel(
+        bus=bus,
+        token=os.getenv("DISCORD_BOT_TOKEN", "").strip(),
+        allow_from=allow_from,
+        poll_channels=poll_channels,
+        poll_interval_seconds=_env_int("DISCORD_POLL_INTERVAL_SECONDS", 10),
+        include_bots=_env_flag("DISCORD_INCLUDE_BOTS", default=False),
+    )
+
+
+def _validate_discord() -> list[str]:
+    if os.getenv("DISCORD_BOT_TOKEN", "").strip():
+        return []
+    return ["Missing DISCORD_BOT_TOKEN for discord channel."]
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -219,6 +239,11 @@ def _make_registry() -> dict[str, ChannelSpec]:
             name="telegram",
             build=_build_telegram,
             validate_setup=_validate_telegram,
+        ),
+        "discord": ChannelSpec(
+            name="discord",
+            build=_build_discord,
+            validate_setup=_validate_discord,
         ),
         "email": ChannelSpec(
             name="email",

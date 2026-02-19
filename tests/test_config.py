@@ -90,6 +90,10 @@ class ConfigTests(unittest.TestCase):
             cfg["channels"]["telegram"]["token"] = "tg-token"
             cfg["channels"]["telegram"]["allowFrom"] = ["u1", "u2"]
             cfg["channels"]["telegram"]["proxy"] = "http://127.0.0.1:7890"
+            cfg["channels"]["discord"]["enabled"] = True
+            cfg["channels"]["discord"]["token"] = "discord-token"
+            cfg["channels"]["discord"]["allowFrom"] = ["du1", "du2"]
+            cfg["channels"]["discord"]["pollChannels"] = ["123", "456"]
             cfg["channels"]["email"]["enabled"] = True
             cfg["channels"]["email"]["consentGranted"] = True
             cfg["channels"]["email"]["smtpHost"] = "smtp.example.com"
@@ -121,6 +125,9 @@ class ConfigTests(unittest.TestCase):
             os.environ.pop("TELEGRAM_BOT_TOKEN", None)
             os.environ.pop("TELEGRAM_ALLOW_FROM", None)
             os.environ.pop("TELEGRAM_PROXY", None)
+            os.environ.pop("DISCORD_BOT_TOKEN", None)
+            os.environ.pop("DISCORD_ALLOW_FROM", None)
+            os.environ.pop("DISCORD_POLL_CHANNELS", None)
             os.environ.pop("EMAIL_CONSENT_GRANTED", None)
             os.environ.pop("EMAIL_SMTP_HOST", None)
             os.environ.pop("EMAIL_SMTP_USERNAME", None)
@@ -145,12 +152,15 @@ class ConfigTests(unittest.TestCase):
             loaded = bootstrap_env_from_config(path)
 
         self.assertIsNotNone(loaded)
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_CHANNELS"], "feishu,telegram,email,slack,qq")
+        self.assertEqual(os.environ["SENTIENTAGENT_V2_CHANNELS"], "feishu,telegram,discord,email,slack,qq")
         self.assertEqual(os.environ["FEISHU_APP_ID"], "app-id")
         self.assertEqual(os.environ["FEISHU_ALLOW_FROM"], "ou_1,ou_2")
         self.assertEqual(os.environ["TELEGRAM_BOT_TOKEN"], "tg-token")
         self.assertEqual(os.environ["TELEGRAM_ALLOW_FROM"], "u1,u2")
         self.assertEqual(os.environ["TELEGRAM_PROXY"], "http://127.0.0.1:7890")
+        self.assertEqual(os.environ["DISCORD_BOT_TOKEN"], "discord-token")
+        self.assertEqual(os.environ["DISCORD_ALLOW_FROM"], "du1,du2")
+        self.assertEqual(os.environ["DISCORD_POLL_CHANNELS"], "123,456")
         self.assertEqual(os.environ["EMAIL_CONSENT_GRANTED"], "1")
         self.assertEqual(os.environ["EMAIL_SMTP_HOST"], "smtp.example.com")
         self.assertEqual(os.environ["EMAIL_SMTP_USERNAME"], "bot@example.com")
