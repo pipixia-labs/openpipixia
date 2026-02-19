@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 from ..bus.events import OutboundMessage
 from .base import BaseChannel
+from .polling_utils import cancel_background_task
 
 logger = logging.getLogger(__name__)
 
@@ -157,13 +158,8 @@ class DingTalkChannel(BaseChannel):
 
     async def stop(self) -> None:
         self._running = False
-        if self._stream_task:
-            self._stream_task.cancel()
-            try:
-                await self._stream_task
-            except asyncio.CancelledError:
-                pass
-            self._stream_task = None
+        await cancel_background_task(self._stream_task)
+        self._stream_task = None
         self._stream_client = None
 
     async def _run_stream_loop(self) -> None:

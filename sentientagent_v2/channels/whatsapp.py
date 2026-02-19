@@ -9,6 +9,7 @@ from typing import Any
 
 from ..bus.events import OutboundMessage
 from .base import BaseChannel
+from .polling_utils import cancel_background_task
 
 logger = logging.getLogger(__name__)
 
@@ -64,13 +65,8 @@ class WhatsAppChannel(BaseChannel):
             except Exception:
                 pass
             self._ws = None
-        if self._listen_task:
-            self._listen_task.cancel()
-            try:
-                await self._listen_task
-            except asyncio.CancelledError:
-                pass
-            self._listen_task = None
+        await cancel_background_task(self._listen_task)
+        self._listen_task = None
 
     async def send(self, msg: OutboundMessage) -> None:
         if not self._ws or not self._connected:

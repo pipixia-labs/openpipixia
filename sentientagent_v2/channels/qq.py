@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from ..bus.events import OutboundMessage
 from .base import BaseChannel
+from .polling_utils import cancel_background_task
 
 logger = logging.getLogger(__name__)
 
@@ -75,13 +76,8 @@ class QQChannel(BaseChannel):
 
     async def stop(self) -> None:
         self._running = False
-        if self._bot_task:
-            self._bot_task.cancel()
-            try:
-                await self._bot_task
-            except asyncio.CancelledError:
-                pass
-            self._bot_task = None
+        await cancel_background_task(self._bot_task)
+        self._bot_task = None
 
     async def send(self, msg: OutboundMessage) -> None:
         if not self._client:
