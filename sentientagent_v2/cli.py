@@ -154,6 +154,60 @@ def _check_openai_codex_oauth() -> tuple[bool, str]:
     return True, f"account_id={token.account_id}"
 
 
+def _check_github_copilot_oauth_non_invasive() -> tuple[bool, str]:
+    """Check GitHub Copilot OAuth cache files without triggering network/device flow.
+
+    Read-only policy:
+    - access token file: ~/.config/litellm/github_copilot/access-token
+    - api key cache file: ~/.config/litellm/github_copilot/api-key.json
+    """
+    token_dir = Path(
+        os.getenv(
+            "GITHUB_COPILOT_TOKEN_DIR",
+            str(Path.home() / ".config/litellm/github_copilot"),
+        )
+    )
+    access_path = token_dir / os.getenv("GITHUB_COPILOT_ACCESS_TOKEN_FILE", "access-token")
+    api_key_path = token_dir / os.getenv("GITHUB_COPILOT_API_KEY_FILE", "api-key.json")
+
+    access_token = ""
+    if access_path.exists():
+        try:
+            access_token = access_path.read_text(encoding="utf-8").strip()
+        except Exception as exc:
+            return False, f"failed to read access token cache ({exc})"
+
+    api_key_payload: dict[str, Any] = {}
+    if api_key_path.exists():
+        try:
+            raw = json.loads(api_key_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                api_key_payload = raw
+        except Exception as exc:
+            return False, f"failed to parse api-key cache ({exc})"
+
+    api_key_token = str(api_key_payload.get("token", "")).strip()
+    expires_at = api_key_payload.get("expires_at")
+    expires_ts: float | None = None
+    if expires_at is not None:
+        try:
+            expires_ts = float(expires_at)
+        except Exception:
+            return False, "invalid expires_at in api-key cache"
+
+    now_ts = dt.datetime.now(dt.timezone.utc).timestamp()
+    if api_key_token and expires_ts and expires_ts > now_ts:
+        expiry_iso = dt.datetime.fromtimestamp(expires_ts, dt.timezone.utc).isoformat()
+        return True, f"api_key_cached_until={expiry_iso}"
+
+    if access_token:
+        if api_key_token and expires_ts and expires_ts <= now_ts:
+            return True, "access_token_cached_api_key_expired_refreshable"
+        return True, "access_token_cached"
+
+    return False, "access_token_missing"
+
+
 def _provider_oauth_health(provider_name: str) -> tuple[str | None, dict[str, Any]]:
     """Return optional oauth issue and provider oauth health summary."""
     spec = find_provider_spec(provider_name)
@@ -179,10 +233,21 @@ def _provider_oauth_health(provider_name: str) -> tuple[str | None, dict[str, An
             status,
         )
 
-    # GitHub Copilot currently relies on LiteLLM's own local auth cache and does
-    # not expose a stable token getter API here, so we keep this non-blocking.
+    if spec.name == "github_copilot":
+        ok, detail = _check_github_copilot_oauth_non_invasive()
+        status["authenticated"] = ok
+        status["message"] = detail
+        if ok:
+            return None, status
+        return (
+            "GitHub Copilot OAuth token cache is not ready "
+            f"({detail}). Run: sentientagent_v2 provider login github-copilot",
+            status,
+        )
+
+    # Keep unknown OAuth providers non-blocking until a checker is implemented.
     status["authenticated"] = None
-    status["message"] = "not_checked_non_invasive_probe_unavailable"
+    status["message"] = "not_checked_no_provider_checker"
     return None, status
 
 
@@ -422,11 +487,16 @@ def _provider_login_github_copilot() -> None:
 
 def _cmd_provider_list() -> int:
     """List providers known by the runtime."""
-    oauth_names = set(oauth_provider_names())
     logger.info("Providers:")
     for name in provider_names():
-        marker = " (OAuth)" if name in oauth_names else ""
-        logger.info(f"- {name}{marker}")
+        spec = find_provider_spec(name)
+        if not spec:
+            logger.info(f"- {name}")
+            continue
+        oauth_flag = ", oauth=true" if spec.is_oauth else ""
+        logger.info(
+            f"- {name}: runtime={spec.runtime}, default_model={spec.default_model}{oauth_flag}"
+        )
     return 0
 
 

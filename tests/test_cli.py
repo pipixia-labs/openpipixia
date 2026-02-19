@@ -9,6 +9,7 @@ import types as pytypes
 import unittest
 import asyncio
 import sys
+import datetime as dt
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -77,6 +78,16 @@ class CLITests(unittest.TestCase):
                 self.assertEqual(ctx.exception.code, 0)
                 mocked_bootstrap.assert_called_once()
                 mocked_list.assert_called_once_with()
+
+    def test_cmd_provider_list_includes_runtime_and_default_model(self) -> None:
+        from sentientagent_v2 import cli
+
+        with patch.object(cli.logger, "info") as mocked_info:
+            code = cli._cmd_provider_list()
+        self.assertEqual(code, 0)
+        lines = [call.args[0] for call in mocked_info.call_args_list if call.args]
+        self.assertTrue(any("openai_codex: runtime=codex" in line for line in lines))
+        self.assertTrue(any("default_model=" in line for line in lines))
 
     def test_provider_status_mode_dispatch(self) -> None:
         from sentientagent_v2 import cli
@@ -177,6 +188,41 @@ class CLITests(unittest.TestCase):
         self.assertTrue(status["required"])
         self.assertTrue(status["authenticated"])
         self.assertEqual(status["message"], "account_id=user_1")
+
+    def test_check_github_copilot_oauth_non_invasive_missing_cache(self) -> None:
+        from sentientagent_v2 import cli
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"GITHUB_COPILOT_TOKEN_DIR": tmp}, clear=False):
+                ok, detail = cli._check_github_copilot_oauth_non_invasive()
+        self.assertFalse(ok)
+        self.assertEqual(detail, "access_token_missing")
+
+    def test_check_github_copilot_oauth_non_invasive_valid_api_key_cache(self) -> None:
+        from sentientagent_v2 import cli
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = {
+                "token": "ghu_xxx",
+                "expires_at": (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)).timestamp(),
+            }
+            api_key_path = Path(tmp) / "api-key.json"
+            api_key_path.write_text(json.dumps(cache), encoding="utf-8")
+            with patch.dict(os.environ, {"GITHUB_COPILOT_TOKEN_DIR": tmp}, clear=False):
+                ok, detail = cli._check_github_copilot_oauth_non_invasive()
+        self.assertTrue(ok)
+        self.assertIn("api_key_cached_until=", detail)
+
+    def test_provider_oauth_health_github_copilot_missing_cache_returns_issue(self) -> None:
+        from sentientagent_v2 import cli
+
+        with patch.object(cli, "_check_github_copilot_oauth_non_invasive", return_value=(False, "access_token_missing")):
+            issue, status = cli._provider_oauth_health("github_copilot")
+        self.assertIsNotNone(issue)
+        self.assertIn("provider login github-copilot", str(issue))
+        self.assertTrue(status["required"])
+        self.assertFalse(status["authenticated"])
+        self.assertEqual(status["message"], "access_token_missing")
 
     def test_cmd_doctor_includes_mcp_health_failures(self) -> None:
         from sentientagent_v2 import cli
