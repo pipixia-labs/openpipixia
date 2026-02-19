@@ -26,7 +26,7 @@ from .config import (
     save_config,
 )
 from .env_utils import env_enabled
-from .logging_utils import emit_debug
+from .logging_utils import debug_logging_enabled, emit_debug
 from .mcp_registry import ManagedMcpToolset, build_mcp_toolsets_from_env, probe_mcp_toolsets, summarize_mcp_toolsets
 from .provider import normalize_model_name, normalize_provider_name, provider_api_key_env, validate_provider_runtime
 from .runtime.adk_utils import extract_text, merge_text_stream
@@ -802,18 +802,14 @@ def main(argv: list[str] | None = None) -> None:
     raise SystemExit(code)
 
 
-def _debug_enabled() -> bool:
-    return env_enabled("SENTIENTAGENT_V2_DEBUG", default=False)
-
-
 def _debug(tag: str, payload: object, *, depth: int = 1) -> None:
-    if not _debug_enabled():
+    if not debug_logging_enabled():
         return
     emit_debug(tag, payload, depth=depth + 1)
 
 
 def _debug_event(event: object) -> None:
-    if not _debug_enabled():
+    if not debug_logging_enabled():
         return
     content = getattr(event, "content", None)
     author = getattr(event, "author", "")

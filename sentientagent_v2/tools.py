@@ -19,7 +19,7 @@ from urllib.request import Request, urlopen
 
 from .bus.events import OutboundMessage
 from .env_utils import env_enabled
-from .logging_utils import emit_debug
+from .logging_utils import debug_logging_enabled, emit_debug
 from .runtime.cron_helpers import cron_store_path, format_schedule
 from .runtime.cron_schedule_parser import parse_schedule_input
 from .runtime.cron_service import CronService
@@ -869,12 +869,8 @@ def cron(
 exec_command.__name__ = "exec"
 
 
-def _debug_enabled() -> bool:
-    return env_enabled("SENTIENTAGENT_V2_DEBUG", default=False)
-
-
 def _debug(tag: str, payload: object, *, depth: int = 1) -> None:
-    if not _debug_enabled():
+    if not debug_logging_enabled():
         return
     emit_debug(tag, payload, depth=depth + 1)
 

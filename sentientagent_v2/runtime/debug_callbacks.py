@@ -12,8 +12,7 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 
-from ..env_utils import env_enabled
-from ..logging_utils import emit_debug
+from ..logging_utils import debug_logging_enabled, emit_debug
 
 _DEFAULT_MAX_TEXT_CHARS = 2000
 _MAX_TOOL_CALL_ID_CHARS = 40
@@ -22,10 +21,6 @@ _SECRET_PATTERNS = [
     re.compile(r"AIza[0-9A-Za-z_-]{16,}"),
     re.compile(r"(?i)(api[_-]?key|token|secret)\s*[:=]\s*['\"]?([^\s'\",]+)"),
 ]
-
-
-def _debug_enabled() -> bool:
-    return env_enabled("SENTIENTAGENT_V2_DEBUG", default=False)
 
 
 def _max_chars() -> int:
@@ -195,7 +190,7 @@ def _write_debug(tag: str, payload: dict[str, Any]) -> None:
 def before_model_debug_callback(callback_context: CallbackContext, llm_request: LlmRequest) -> LlmResponse | None:
     """Emit sanitized request payload before model invocation."""
     patched = _sanitize_tool_ids(callback_context, llm_request)
-    if not _debug_enabled():
+    if not debug_logging_enabled():
         return None
 
     texts = _request_texts(llm_request)
@@ -219,7 +214,7 @@ def before_model_debug_callback(callback_context: CallbackContext, llm_request: 
 
 def after_model_debug_callback(callback_context: CallbackContext, llm_response: LlmResponse) -> LlmResponse | None:
     """Emit sanitized response summary after model invocation."""
-    if not _debug_enabled():
+    if not debug_logging_enabled():
         return None
 
     payload = {

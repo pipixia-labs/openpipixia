@@ -7,6 +7,13 @@ from typing import Any
 
 from loguru import logger
 
+from .env_utils import env_enabled
+
+
+def debug_logging_enabled() -> bool:
+    """Return whether debug logging is enabled globally."""
+    return env_enabled("SENTIENTAGENT_V2_DEBUG", default=False)
+
 
 def debug_body(payload: Any) -> str:
     """Serialize debug payloads for stable structured log lines."""
