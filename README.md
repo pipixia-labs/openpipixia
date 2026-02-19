@@ -111,6 +111,8 @@ sentientagent_v2 run
 sentientagent_v2 skills
 sentientagent_v2 doctor
 sentientagent_v2 provider list
+sentientagent_v2 provider status
+sentientagent_v2 provider status --json
 sentientagent_v2 provider login github-copilot
 sentientagent_v2 provider login openai-codex
 ```

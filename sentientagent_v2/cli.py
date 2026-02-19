@@ -427,6 +427,70 @@ def _cmd_provider_list() -> int:
     return 0
 
 
+def _cmd_provider_status(*, output_json: bool = False) -> int:
+    """Show runtime status for currently selected provider."""
+    provider_name = normalize_provider_name(os.getenv("SENTIENTAGENT_V2_PROVIDER"))
+    provider_model = normalize_model_name(provider_name, os.getenv("SENTIENTAGENT_V2_MODEL"))
+    provider_enabled = env_enabled("SENTIENTAGENT_V2_PROVIDER_ENABLED", default=True)
+    provider_key_env = provider_api_key_env(provider_name)
+    provider_key_configured = bool(provider_key_env is None or os.getenv(provider_key_env, "").strip())
+
+    issues: list[str] = []
+    provider_issue = ""
+    provider_oauth: dict[str, Any] = {"required": False, "authenticated": None, "message": ""}
+
+    if not provider_enabled:
+        issues.append("No provider is enabled.")
+    else:
+        provider_issue = validate_provider_runtime(provider_name) or ""
+        if provider_issue:
+            issues.append(provider_issue)
+        if provider_key_env and not provider_key_configured:
+            issues.append(f"Missing API key env: {provider_key_env}")
+        oauth_issue, provider_oauth = _provider_oauth_health(provider_name)
+        if oauth_issue:
+            issues.append(oauth_issue)
+
+    report: dict[str, Any] = {
+        "ok": not issues,
+        "issues": issues,
+        "provider": {
+            "name": provider_name,
+            "enabled": provider_enabled,
+            "model": provider_model,
+            "runtime_issue": provider_issue,
+            "api_key_env": provider_key_env,
+            "api_key_configured": provider_key_configured,
+            "oauth": provider_oauth,
+        },
+    }
+
+    if output_json:
+        _stdout_line(json.dumps(report, ensure_ascii=False))
+        return 0 if report["ok"] else 1
+
+    logger.info(
+        f"Provider: {provider_name} (enabled={provider_enabled}, model={provider_model})"
+    )
+    if provider_key_env:
+        logger.info(f"API key: {provider_key_env}={'configured' if provider_key_configured else 'missing'}")
+    else:
+        logger.info("API key: not required")
+    logger.info(
+        "OAuth: "
+        f"required={provider_oauth.get('required')}, "
+        f"authenticated={provider_oauth.get('authenticated')}, "
+        f"message={provider_oauth.get('message')}"
+    )
+    if issues:
+        logger.info("Issues:")
+        for issue in issues:
+            logger.info(f"- {issue}")
+        return 1
+    logger.info("Provider is ready.")
+    return 0
+
+
 def _cmd_provider_login(provider_name: str) -> int:
     """Authenticate an OAuth provider account for local runtime use."""
     normalized = provider_name.strip().lower().replace("-", "_")
@@ -456,6 +520,7 @@ def _dispatch_provider_command(args: argparse.Namespace, parser: argparse.Argume
     """Dispatch provider subcommands from parsed argparse namespace."""
     handlers: dict[str, Callable[[], int]] = {
         "list": _cmd_provider_list,
+        "status": lambda: _cmd_provider_status(output_json=args.output_json),
         "login": lambda: _cmd_provider_login(args.provider_name),
     }
     handler = handlers.get(args.provider_command)
@@ -918,6 +983,13 @@ def main(argv: list[str] | None = None) -> None:
     provider_parser = subparsers.add_parser("provider", help="Manage runtime LLM providers.")
     provider_subparsers = provider_parser.add_subparsers(dest="provider_command", required=True)
     provider_subparsers.add_parser("list", help="List providers available to sentientagent_v2.")
+    provider_status_parser = provider_subparsers.add_parser("status", help="Show current provider runtime status.")
+    provider_status_parser.add_argument(
+        "--json",
+        dest="output_json",
+        action="store_true",
+        help="Emit provider status as one machine-readable JSON object.",
+    )
     provider_login_parser = provider_subparsers.add_parser("login", help="Authenticate an OAuth provider.")
     provider_login_parser.add_argument(
         "provider_name",

@@ -78,6 +78,17 @@ class CLITests(unittest.TestCase):
                 mocked_bootstrap.assert_called_once()
                 mocked_list.assert_called_once_with()
 
+    def test_provider_status_mode_dispatch(self) -> None:
+        from sentientagent_v2 import cli
+
+        with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
+            with patch.object(cli, "_cmd_provider_status", return_value=0) as mocked_status:
+                with self.assertRaises(SystemExit) as ctx:
+                    cli.main(["provider", "status", "--json"])
+                self.assertEqual(ctx.exception.code, 0)
+                mocked_bootstrap.assert_called_once()
+                mocked_status.assert_called_once_with(output_json=True)
+
     def test_cmd_provider_login_rejects_non_oauth_provider(self) -> None:
         from sentientagent_v2 import cli
 
@@ -260,6 +271,38 @@ class CLITests(unittest.TestCase):
                                                 with patch.object(cli.logger, "debug"):
                                                     with patch("builtins.print") as mocked_print:
                                                         code = cli._cmd_doctor(output_json=True, verbose=False)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(mocked_print.call_count, 1)
+        payload = json.loads(mocked_print.call_args.args[0])
+        self.assertFalse(payload["ok"])
+        self.assertIn("OpenAI Codex OAuth token is not ready", payload["issues"])
+        self.assertEqual(payload["provider"]["oauth"], fake_oauth_status)
+
+    def test_cmd_provider_status_json_output_includes_oauth_issue(self) -> None:
+        from sentientagent_v2 import cli
+
+        fake_oauth_status = {
+            "required": True,
+            "authenticated": False,
+            "message": "token missing",
+        }
+        with patch.dict(
+            os.environ,
+            {
+                "SENTIENTAGENT_V2_PROVIDER": "openai_codex",
+                "SENTIENTAGENT_V2_PROVIDER_ENABLED": "1",
+            },
+            clear=False,
+        ):
+            with patch.object(cli, "validate_provider_runtime", return_value=None):
+                with patch.object(
+                    cli,
+                    "_provider_oauth_health",
+                    return_value=("OpenAI Codex OAuth token is not ready", fake_oauth_status),
+                ):
+                    with patch("builtins.print") as mocked_print:
+                        code = cli._cmd_provider_status(output_json=True)
 
         self.assertEqual(code, 1)
         self.assertEqual(mocked_print.call_count, 1)
