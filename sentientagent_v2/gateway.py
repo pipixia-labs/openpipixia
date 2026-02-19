@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from google.genai import types
 
@@ -24,6 +24,33 @@ from .security import load_security_policy
 from .tools import SubagentSpawnRequest, configure_outbound_publisher, configure_subagent_dispatcher
 
 logger = logging.getLogger(__name__)
+
+
+async def _cancel_task(task: asyncio.Task[Any] | None) -> None:
+    """Cancel and await one background task safely."""
+    if task is None:
+        return
+    await _cancel_tasks([task])
+
+
+async def _cancel_tasks(
+    tasks: list[asyncio.Task[Any]],
+    *,
+    on_exception: Callable[[asyncio.Task[Any], Exception], None] | None = None,
+) -> None:
+    """Cancel and drain tasks, optionally reporting non-cancellation failures."""
+    if not tasks:
+        return
+    for task in tasks:
+        task.cancel()
+    for task in tasks:
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            if on_exception is not None:
+                on_exception(task, exc)
 
 
 class Gateway:
@@ -136,13 +163,8 @@ class Gateway:
         configure_subagent_dispatcher(None)
         configure_outbound_publisher(None)
         await self._stop_subagent_tasks()
-        if self._inbound_task:
-            self._inbound_task.cancel()
-            try:
-                await self._inbound_task
-            except asyncio.CancelledError:
-                pass
-            self._inbound_task = None
+        await _cancel_task(self._inbound_task)
+        self._inbound_task = None
         if self.channel_manager:
             await self.channel_manager.stop_dispatcher()
             await self.channel_manager.stop_all()
@@ -182,15 +204,10 @@ class Gateway:
         if not self._subagent_tasks:
             return
         pending = list(self._subagent_tasks.values())
-        for task in pending:
-            task.cancel()
-        for task in pending:
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                logger.exception("Background sub-agent task stopped with exception")
+        await _cancel_tasks(
+            pending,
+            on_exception=lambda _task, _exc: logger.exception("Background sub-agent task stopped with exception"),
+        )
         self._subagent_tasks.clear()
 
     async def _run_subagent_request(self, request: SubagentSpawnRequest) -> None:
