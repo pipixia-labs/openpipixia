@@ -96,6 +96,36 @@ class CLITests(unittest.TestCase):
         self.assertEqual(code, 0)
         handler.assert_called_once_with()
 
+    def test_provider_oauth_health_non_oauth_provider(self) -> None:
+        from sentientagent_v2 import cli
+
+        issue, status = cli._provider_oauth_health("google")
+        self.assertIsNone(issue)
+        self.assertFalse(status["required"])
+        self.assertTrue(status["authenticated"])
+        self.assertEqual(status["message"], "not_required")
+
+    def test_provider_oauth_health_openai_codex_missing_token(self) -> None:
+        from sentientagent_v2 import cli
+
+        with patch.object(cli, "_check_openai_codex_oauth", return_value=(False, "token missing")):
+            issue, status = cli._provider_oauth_health("openai_codex")
+        self.assertIsNotNone(issue)
+        self.assertIn("provider login openai-codex", str(issue))
+        self.assertTrue(status["required"])
+        self.assertFalse(status["authenticated"])
+        self.assertEqual(status["message"], "token missing")
+
+    def test_provider_oauth_health_openai_codex_authenticated(self) -> None:
+        from sentientagent_v2 import cli
+
+        with patch.object(cli, "_check_openai_codex_oauth", return_value=(True, "account_id=user_1")):
+            issue, status = cli._provider_oauth_health("openai_codex")
+        self.assertIsNone(issue)
+        self.assertTrue(status["required"])
+        self.assertTrue(status["authenticated"])
+        self.assertEqual(status["message"], "account_id=user_1")
+
     def test_cmd_doctor_includes_mcp_health_failures(self) -> None:
         from sentientagent_v2 import cli
 
@@ -189,6 +219,54 @@ class CLITests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertIn("mcp", payload)
         self.assertIn("issues", payload)
+
+    def test_cmd_doctor_json_output_includes_provider_oauth_issue(self) -> None:
+        from sentientagent_v2 import cli
+
+        fake_registry = pytypes.SimpleNamespace(workspace=Path("/tmp"), list_skills=lambda: [])
+        fake_session_cfg = pytypes.SimpleNamespace(db_url="sqlite+aiosqlite:////tmp/sessions.db")
+        fake_security_policy = pytypes.SimpleNamespace(
+            restrict_to_workspace=False,
+            allow_exec=True,
+            allow_network=True,
+            exec_allowlist=(),
+        )
+        fake_oauth_status = {
+            "required": True,
+            "authenticated": False,
+            "message": "token missing",
+        }
+        with patch.dict(
+            os.environ,
+            {
+                "SENTIENTAGENT_V2_PROVIDER": "openai_codex",
+                "SENTIENTAGENT_V2_PROVIDER_ENABLED": "1",
+            },
+            clear=False,
+        ):
+            with patch("sentientagent_v2.cli.shutil.which", return_value="/usr/bin/adk"):
+                with patch.object(cli, "validate_provider_runtime", return_value=None):
+                    with patch.object(
+                        cli,
+                        "_provider_oauth_health",
+                        return_value=("OpenAI Codex OAuth token is not ready", fake_oauth_status),
+                    ):
+                        with patch.object(cli, "get_registry", return_value=fake_registry):
+                            with patch.object(cli, "load_session_config", return_value=fake_session_cfg):
+                                with patch.object(cli, "parse_enabled_channels", return_value=["local"]):
+                                    with patch.object(cli, "validate_channel_setup", return_value=[]):
+                                        with patch.object(cli, "load_security_policy", return_value=fake_security_policy):
+                                            with patch.object(cli, "build_mcp_toolsets_from_env", return_value=[]):
+                                                with patch.object(cli.logger, "debug"):
+                                                    with patch("builtins.print") as mocked_print:
+                                                        code = cli._cmd_doctor(output_json=True, verbose=False)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(mocked_print.call_count, 1)
+        payload = json.loads(mocked_print.call_args.args[0])
+        self.assertFalse(payload["ok"])
+        self.assertIn("OpenAI Codex OAuth token is not ready", payload["issues"])
+        self.assertEqual(payload["provider"]["oauth"], fake_oauth_status)
 
     def test_log_mcp_startup_summary(self) -> None:
         from sentientagent_v2 import cli

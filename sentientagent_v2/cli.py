@@ -134,6 +134,57 @@ def _cmd_skills() -> int:
     return 0
 
 
+def _check_openai_codex_oauth() -> tuple[bool, str]:
+    """Check whether OpenAI Codex OAuth token is locally available."""
+    try:
+        from oauth_cli_kit import get_token
+    except ImportError:
+        return False, "oauth-cli-kit is not installed. Run: pip install oauth-cli-kit"
+
+    try:
+        token = get_token()
+    except Exception as exc:
+        return False, f"failed to read oauth token store ({exc})"
+
+    if not token or not getattr(token, "access", ""):
+        return False, "token missing"
+    if not getattr(token, "account_id", ""):
+        return False, "account_id missing in token"
+    return True, f"account_id={token.account_id}"
+
+
+def _provider_oauth_health(provider_name: str) -> tuple[str | None, dict[str, Any]]:
+    """Return optional oauth issue and provider oauth health summary."""
+    spec = find_provider_spec(provider_name)
+    status: dict[str, Any] = {
+        "required": bool(spec and spec.is_oauth),
+        "authenticated": None,
+        "message": "",
+    }
+    if not spec or not spec.is_oauth:
+        status["authenticated"] = True
+        status["message"] = "not_required"
+        return None, status
+
+    if spec.name == "openai_codex":
+        ok, detail = _check_openai_codex_oauth()
+        status["authenticated"] = ok
+        status["message"] = detail
+        if ok:
+            return None, status
+        return (
+            "OpenAI Codex OAuth token is not ready "
+            f"({detail}). Run: sentientagent_v2 provider login openai-codex",
+            status,
+        )
+
+    # GitHub Copilot currently relies on LiteLLM's own local auth cache and does
+    # not expose a stable token getter API here, so we keep this non-blocking.
+    status["authenticated"] = None
+    status["message"] = "not_checked_non_invasive_probe_unavailable"
+    return None, status
+
+
 def _cmd_doctor(*, output_json: bool = False, verbose: bool = False) -> int:
     """Run runtime diagnostics and return a process exit code.
 
@@ -146,6 +197,7 @@ def _cmd_doctor(*, output_json: bool = False, verbose: bool = False) -> int:
     provider_model = normalize_model_name(provider_name, os.getenv("SENTIENTAGENT_V2_MODEL"))
     provider_enabled = env_enabled("SENTIENTAGENT_V2_PROVIDER_ENABLED", default=True)
     provider_key_env = provider_api_key_env(provider_name)
+    provider_oauth: dict[str, Any] = {"required": False, "authenticated": None, "message": ""}
     if not provider_enabled:
         issues.append("No provider is enabled. Enable one in config (e.g. providers.google.enabled=true).")
     else:
@@ -157,6 +209,9 @@ def _cmd_doctor(*, output_json: bool = False, verbose: bool = False) -> int:
                 f"Missing {provider_name} API key. Set `providers.{provider_name}.apiKey` "
                 f"in ~/.sentientagent_v2/config.json or export {provider_key_env}."
             )
+        oauth_issue, provider_oauth = _provider_oauth_health(provider_name)
+        if oauth_issue:
+            issues.append(oauth_issue)
 
     config_path = get_config_path()
     registry = get_registry()
@@ -210,6 +265,7 @@ def _cmd_doctor(*, output_json: bool = False, verbose: bool = False) -> int:
             "name": provider_name,
             "enabled": provider_enabled,
             "model": provider_model,
+            "oauth": provider_oauth,
         },
         "skills": {"count": skills_count},
         "session": {"db_url": session_cfg.db_url},
@@ -244,6 +300,12 @@ def _cmd_doctor(*, output_json: bool = False, verbose: bool = False) -> int:
     logger.debug(f"Workspace: {registry.workspace}")
     logger.debug(f"Detected skills: {skills_count}")
     logger.debug(f"Provider: {provider_name} (enabled={provider_enabled}, model={provider_model})")
+    logger.debug(
+        "Provider OAuth: "
+        f"required={provider_oauth.get('required')}, "
+        f"authenticated={provider_oauth.get('authenticated')}, "
+        f"message={provider_oauth.get('message')}"
+    )
     logger.debug(f"Session storage: sqlite ({session_cfg.db_url})")
     logger.debug(f"Configured channels: {', '.join(configured_channels) if configured_channels else '(none)'}")
     logger.debug(
