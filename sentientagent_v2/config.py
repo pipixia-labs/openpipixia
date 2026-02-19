@@ -94,6 +94,7 @@ def default_config() -> dict[str, Any]:
                 "bridgeUrl": "ws://localhost:3001",
                 "bridgeToken": "",
                 "allowFrom": [],
+                "reconnectDelaySeconds": 5,
             },
             "discord": {
                 "enabled": False,
@@ -360,6 +361,12 @@ def config_to_env(config: dict[str, Any]) -> dict[str, str]:
     telegram_allow_from = telegram.get("allowFrom", [])
     if not isinstance(telegram_allow_from, list):
         telegram_allow_from = []
+    whatsapp = channels.get("whatsapp", {}) if isinstance(channels, dict) else {}
+    if not isinstance(whatsapp, dict):
+        whatsapp = {}
+    whatsapp_allow_from = whatsapp.get("allowFrom", [])
+    if not isinstance(whatsapp_allow_from, list):
+        whatsapp_allow_from = []
     discord = channels.get("discord", {}) if isinstance(channels, dict) else {}
     if not isinstance(discord, dict):
         discord = {}
@@ -424,6 +431,10 @@ def config_to_env(config: dict[str, Any]) -> dict[str, str]:
         "TELEGRAM_BOT_TOKEN": str(telegram.get("token", "")).strip(),
         "TELEGRAM_ALLOW_FROM": ",".join(normalize_allowlist(telegram_allow_from)),
         "TELEGRAM_PROXY": str(telegram.get("proxy", "")).strip(),
+        "WHATSAPP_BRIDGE_URL": str(whatsapp.get("bridgeUrl", "")).strip(),
+        "WHATSAPP_BRIDGE_TOKEN": str(whatsapp.get("bridgeToken", "")).strip(),
+        "WHATSAPP_ALLOW_FROM": ",".join(normalize_allowlist(whatsapp_allow_from)),
+        "WHATSAPP_RECONNECT_DELAY_SECONDS": str(whatsapp.get("reconnectDelaySeconds", 5)),
         "DISCORD_BOT_TOKEN": str(discord.get("token", "")).strip(),
         "DISCORD_ALLOW_FROM": ",".join(normalize_allowlist(discord_allow_from)),
         "DISCORD_POLL_CHANNELS": ",".join(normalize_allowlist(discord_poll_channels)),

@@ -66,6 +66,11 @@ class ChannelFactoryTests(unittest.TestCase):
         self.assertTrue(any("DINGTALK_CLIENT_SECRET" in item for item in issues))
         self.assertFalse(any("Unsupported channels" in item for item in issues))
 
+    def test_validate_reports_whatsapp_setup_issues(self) -> None:
+        issues = validate_channel_setup(["whatsapp"])
+        self.assertTrue(any("WHATSAPP_BRIDGE_URL" in item for item in issues))
+        self.assertFalse(any("Unsupported channels" in item for item in issues))
+
     def test_build_local_channel_manager(self) -> None:
         manager, local_channel = build_channel_manager(bus=MessageBus(), channel_names=["local"])
         self.assertIsNotNone(local_channel)
@@ -107,6 +112,11 @@ class ChannelFactoryTests(unittest.TestCase):
         os.environ["DINGTALK_CLIENT_SECRET"] = "dt-app-secret"
         manager, _ = build_channel_manager(bus=MessageBus(), channel_names=["dingtalk"])
         self.assertIn("dingtalk", manager.channels)
+
+    def test_build_manager_registers_whatsapp_when_configured(self) -> None:
+        os.environ["WHATSAPP_BRIDGE_URL"] = "ws://127.0.0.1:3001"
+        manager, _ = build_channel_manager(bus=MessageBus(), channel_names=["whatsapp"])
+        self.assertIn("whatsapp", manager.channels)
 
 
 if __name__ == "__main__":

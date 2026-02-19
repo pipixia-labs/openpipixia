@@ -11,6 +11,7 @@ from .qq import QQChannel
 from .slack import SlackChannel
 from .manager import ChannelManager
 from .telegram import TelegramChannel
+from .whatsapp import WhatsAppChannel
 
 __all__ = [
     "BaseChannel",
@@ -23,6 +24,7 @@ __all__ = [
     "QQChannel",
     "SlackChannel",
     "TelegramChannel",
+    "WhatsAppChannel",
     "build_channel_manager",
     "parse_enabled_channels",
     "validate_channel_setup",

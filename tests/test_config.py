@@ -90,6 +90,10 @@ class ConfigTests(unittest.TestCase):
             cfg["channels"]["telegram"]["token"] = "tg-token"
             cfg["channels"]["telegram"]["allowFrom"] = ["u1", "u2"]
             cfg["channels"]["telegram"]["proxy"] = "http://127.0.0.1:7890"
+            cfg["channels"]["whatsapp"]["enabled"] = True
+            cfg["channels"]["whatsapp"]["bridgeUrl"] = "ws://127.0.0.1:3001"
+            cfg["channels"]["whatsapp"]["bridgeToken"] = "wa-bridge-token"
+            cfg["channels"]["whatsapp"]["allowFrom"] = ["8613800138000", "8613900139000"]
             cfg["channels"]["discord"]["enabled"] = True
             cfg["channels"]["discord"]["token"] = "discord-token"
             cfg["channels"]["discord"]["allowFrom"] = ["du1", "du2"]
@@ -129,6 +133,9 @@ class ConfigTests(unittest.TestCase):
             os.environ.pop("TELEGRAM_BOT_TOKEN", None)
             os.environ.pop("TELEGRAM_ALLOW_FROM", None)
             os.environ.pop("TELEGRAM_PROXY", None)
+            os.environ.pop("WHATSAPP_BRIDGE_URL", None)
+            os.environ.pop("WHATSAPP_BRIDGE_TOKEN", None)
+            os.environ.pop("WHATSAPP_ALLOW_FROM", None)
             os.environ.pop("DISCORD_BOT_TOKEN", None)
             os.environ.pop("DISCORD_ALLOW_FROM", None)
             os.environ.pop("DISCORD_POLL_CHANNELS", None)
@@ -159,12 +166,15 @@ class ConfigTests(unittest.TestCase):
             loaded = bootstrap_env_from_config(path)
 
         self.assertIsNotNone(loaded)
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_CHANNELS"], "feishu,telegram,discord,dingtalk,email,slack,qq")
+        self.assertEqual(os.environ["SENTIENTAGENT_V2_CHANNELS"], "feishu,telegram,whatsapp,discord,dingtalk,email,slack,qq")
         self.assertEqual(os.environ["FEISHU_APP_ID"], "app-id")
         self.assertEqual(os.environ["FEISHU_ALLOW_FROM"], "ou_1,ou_2")
         self.assertEqual(os.environ["TELEGRAM_BOT_TOKEN"], "tg-token")
         self.assertEqual(os.environ["TELEGRAM_ALLOW_FROM"], "u1,u2")
         self.assertEqual(os.environ["TELEGRAM_PROXY"], "http://127.0.0.1:7890")
+        self.assertEqual(os.environ["WHATSAPP_BRIDGE_URL"], "ws://127.0.0.1:3001")
+        self.assertEqual(os.environ["WHATSAPP_BRIDGE_TOKEN"], "wa-bridge-token")
+        self.assertEqual(os.environ["WHATSAPP_ALLOW_FROM"], "8613800138000,8613900139000")
         self.assertEqual(os.environ["DISCORD_BOT_TOKEN"], "discord-token")
         self.assertEqual(os.environ["DISCORD_ALLOW_FROM"], "du1,du2")
         self.assertEqual(os.environ["DISCORD_POLL_CHANNELS"], "123,456")

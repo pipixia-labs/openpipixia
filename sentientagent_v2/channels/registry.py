@@ -22,6 +22,7 @@ from .local import LocalChannel
 from .qq import QQ_AVAILABLE, QQChannel
 from .slack import SlackChannel
 from .telegram import TelegramChannel
+from .whatsapp import WHATSAPP_AVAILABLE, WhatsAppChannel
 
 
 LocalWriter = Callable[[str], None] | None
@@ -122,6 +123,26 @@ def _validate_dingtalk() -> list[str]:
         issues.append("Missing DINGTALK_CLIENT_ID for dingtalk channel.")
     if not os.getenv("DINGTALK_CLIENT_SECRET", "").strip():
         issues.append("Missing DINGTALK_CLIENT_SECRET for dingtalk channel.")
+    return issues
+
+
+def _build_whatsapp(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
+    allow_from = [item.strip() for item in os.getenv("WHATSAPP_ALLOW_FROM", "").split(",") if item.strip()]
+    return WhatsAppChannel(
+        bus=bus,
+        bridge_url=os.getenv("WHATSAPP_BRIDGE_URL", "").strip(),
+        bridge_token=os.getenv("WHATSAPP_BRIDGE_TOKEN", "").strip(),
+        allow_from=allow_from,
+        reconnect_delay_seconds=_env_int("WHATSAPP_RECONNECT_DELAY_SECONDS", 5),
+    )
+
+
+def _validate_whatsapp() -> list[str]:
+    issues: list[str] = []
+    if not WHATSAPP_AVAILABLE:
+        issues.append("WhatsApp channel requires `websockets` package.")
+    if not os.getenv("WHATSAPP_BRIDGE_URL", "").strip():
+        issues.append("Missing WHATSAPP_BRIDGE_URL for whatsapp channel.")
     return issues
 
 
@@ -261,6 +282,11 @@ def _make_registry() -> dict[str, ChannelSpec]:
             name="telegram",
             build=_build_telegram,
             validate_setup=_validate_telegram,
+        ),
+        "whatsapp": ChannelSpec(
+            name="whatsapp",
+            build=_build_whatsapp,
+            validate_setup=_validate_whatsapp,
         ),
         "discord": ChannelSpec(
             name="discord",
