@@ -9,6 +9,7 @@ from typing import Any
 
 from .provider_registry import (
     PROVIDERS,
+    RUNTIME_CODEX,
     RUNTIME_GOOGLE,
     RUNTIME_LITELLM,
     find_provider_spec,
@@ -91,7 +92,14 @@ def validate_provider_runtime(provider: str) -> str | None:
             "Install dependencies with: pip install -e ."
         )
 
-    if spec.runtime not in {RUNTIME_GOOGLE, RUNTIME_LITELLM}:
+    if spec.runtime == RUNTIME_CODEX:
+        if importlib.util.find_spec("httpx") is None:
+            return (
+                "Provider 'openai_codex' requires `httpx`. "
+                "Install dependencies with: pip install -e ."
+            )
+
+    if spec.runtime not in {RUNTIME_GOOGLE, RUNTIME_LITELLM, RUNTIME_CODEX}:
         if spec.unsupported_reason:
             return spec.unsupported_reason
         return f"Provider '{provider}' is not supported by runtime yet."
@@ -139,6 +147,12 @@ def build_adk_model_from_env() -> Any:
                 kwargs["extra_headers"] = parsed
 
         return LiteLlm(model=model_name, **kwargs)
+
+    if spec.runtime == RUNTIME_CODEX:
+        from .openai_codex_llm import OpenAICodexLlm
+
+        codex_url = os.getenv("SENTIENTAGENT_V2_PROVIDER_API_BASE", "").strip() or provider_default_api_base(provider)
+        return OpenAICodexLlm(model=model_name, codex_url=codex_url)
 
     raise RuntimeError(f"Unsupported provider '{provider}'.")
 

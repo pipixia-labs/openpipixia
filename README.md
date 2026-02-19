@@ -12,7 +12,7 @@ You can think of sentientagent_v2 as a "Hello World" edition of the OpenClaw-sty
 - Runtime: Google ADK (`LlmAgent` + function tools), with provider registry support:
   - native: `google`
   - LiteLLM: `openai`, `openrouter`, `anthropic`, `deepseek`, `groq`, `gemini`, `dashscope`, `zhipu`, `moonshot`, `minimax`, `aihubmix`, `siliconflow`, `vllm`, `custom`, `github_copilot` (OAuth)
-  - OAuth login only (runtime adapter pending): `openai_codex`
+  - ADK BaseLlm adapter (OAuth): `openai_codex`
 - Bundles built-in skills under `sentientagent_v2/skills`
 - Provides core tools for file, shell, web, messaging, and scheduling workflows
 
@@ -311,7 +311,7 @@ It is already included in default dependencies.
 
 Provider selection is determined by `enabled` flags only. Keep exactly one provider enabled.
 Runtime supports `google` plus all registry-listed LiteLLM providers.
-`openai_codex` currently supports OAuth login only and requires a dedicated ADK runtime adapter before model invocation.
+`openai_codex` runs via a dedicated ADK `BaseLlm` adapter and requires OAuth login first.
 
 `session` always uses SQLite. If `dbUrl` is empty, the default path is
 `~/.sentientagent_v2/database/sessions.db`.

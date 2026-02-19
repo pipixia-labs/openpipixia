@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 RUNTIME_GOOGLE = "google"
 RUNTIME_LITELLM = "litellm"
+RUNTIME_CODEX = "codex"
 RUNTIME_UNSUPPORTED = "unsupported"
 
 
@@ -189,14 +190,11 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         name="openai_codex",
         default_model="openai-codex/gpt-5.1-codex",
         display_name="OpenAI Codex",
-        runtime=RUNTIME_UNSUPPORTED,
+        runtime=RUNTIME_CODEX,
         api_key_env=None,
+        default_api_base="https://chatgpt.com/backend-api/codex/responses",
         is_oauth=True,
         oauth_login="openai_codex",
-        unsupported_reason=(
-            "Provider 'openai_codex' is not supported by ADK runtime yet. "
-            "OAuth login is available, but model invocation requires a dedicated BaseLlm adapter."
-        ),
     ),
 )
 
