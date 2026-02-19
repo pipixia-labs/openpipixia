@@ -14,6 +14,7 @@ from typing import Callable
 
 from ..bus.queue import MessageBus
 from .base import BaseChannel
+from .dingtalk import DINGTALK_AVAILABLE, DingTalkChannel
 from .discord import DiscordChannel
 from .email import EmailChannel
 from .feishu import FEISHU_AVAILABLE, FeishuChannel
@@ -101,6 +102,27 @@ def _validate_discord() -> list[str]:
     if os.getenv("DISCORD_BOT_TOKEN", "").strip():
         return []
     return ["Missing DISCORD_BOT_TOKEN for discord channel."]
+
+
+def _build_dingtalk(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
+    allow_from = [item.strip() for item in os.getenv("DINGTALK_ALLOW_FROM", "").split(",") if item.strip()]
+    return DingTalkChannel(
+        bus=bus,
+        client_id=os.getenv("DINGTALK_CLIENT_ID", "").strip(),
+        client_secret=os.getenv("DINGTALK_CLIENT_SECRET", "").strip(),
+        allow_from=allow_from,
+    )
+
+
+def _validate_dingtalk() -> list[str]:
+    issues: list[str] = []
+    if not DINGTALK_AVAILABLE:
+        issues.append("DingTalk channel requires `dingtalk-stream` (pip install dingtalk-stream).")
+    if not os.getenv("DINGTALK_CLIENT_ID", "").strip():
+        issues.append("Missing DINGTALK_CLIENT_ID for dingtalk channel.")
+    if not os.getenv("DINGTALK_CLIENT_SECRET", "").strip():
+        issues.append("Missing DINGTALK_CLIENT_SECRET for dingtalk channel.")
+    return issues
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -244,6 +266,11 @@ def _make_registry() -> dict[str, ChannelSpec]:
             name="discord",
             build=_build_discord,
             validate_setup=_validate_discord,
+        ),
+        "dingtalk": ChannelSpec(
+            name="dingtalk",
+            build=_build_dingtalk,
+            validate_setup=_validate_dingtalk,
         ),
         "email": ChannelSpec(
             name="email",

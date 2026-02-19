@@ -369,6 +369,12 @@ def config_to_env(config: dict[str, Any]) -> dict[str, str]:
     discord_poll_channels = discord.get("pollChannels", [])
     if not isinstance(discord_poll_channels, list):
         discord_poll_channels = []
+    dingtalk = channels.get("dingtalk", {}) if isinstance(channels, dict) else {}
+    if not isinstance(dingtalk, dict):
+        dingtalk = {}
+    dingtalk_allow_from = dingtalk.get("allowFrom", [])
+    if not isinstance(dingtalk_allow_from, list):
+        dingtalk_allow_from = []
     email = channels.get("email", {}) if isinstance(channels, dict) else {}
     if not isinstance(email, dict):
         email = {}
@@ -423,6 +429,9 @@ def config_to_env(config: dict[str, Any]) -> dict[str, str]:
         "DISCORD_POLL_CHANNELS": ",".join(normalize_allowlist(discord_poll_channels)),
         "DISCORD_POLL_INTERVAL_SECONDS": str(discord.get("pollIntervalSeconds", 10)),
         "DISCORD_INCLUDE_BOTS": "1" if is_enabled(discord.get("includeBots"), default=False) else "0",
+        "DINGTALK_CLIENT_ID": str(dingtalk.get("clientId", "")).strip(),
+        "DINGTALK_CLIENT_SECRET": str(dingtalk.get("clientSecret", "")).strip(),
+        "DINGTALK_ALLOW_FROM": ",".join(normalize_allowlist(dingtalk_allow_from)),
         "EMAIL_CONSENT_GRANTED": "1" if is_enabled(email.get("consentGranted"), default=False) else "0",
         "EMAIL_IMAP_HOST": str(email.get("imapHost", "")).strip(),
         "EMAIL_IMAP_PORT": str(email.get("imapPort", 993)),
