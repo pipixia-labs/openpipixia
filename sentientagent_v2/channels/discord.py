@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 from ..bus.events import OutboundMessage
 from .base import BaseChannel
+from .polling_utils import cancel_background_task, dedupe_stripped, run_poll_loop
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +36,7 @@ class DiscordChannel(BaseChannel):
     ) -> None:
         super().__init__(bus, allow_from=allow_from)
         self.token = token.strip()
-        self.poll_channels = list(
-            dict.fromkeys([item.strip() for item in (poll_channels or []) if item and item.strip()])
-        )
+        self.poll_channels = dedupe_stripped(poll_channels)
         self.poll_interval_seconds = max(int(poll_interval_seconds), 3)
         self.include_bots = bool(include_bots)
         self.api_base = api_base.rstrip("/")
@@ -119,13 +118,8 @@ class DiscordChannel(BaseChannel):
 
     async def stop(self) -> None:
         self._running = False
-        if self._poll_task:
-            self._poll_task.cancel()
-            try:
-                await self._poll_task
-            except asyncio.CancelledError:
-                pass
-            self._poll_task = None
+        await cancel_background_task(self._poll_task)
+        self._poll_task = None
 
     async def send(self, msg: OutboundMessage) -> None:
         channel_id = msg.chat_id.strip()
@@ -140,15 +134,14 @@ class DiscordChannel(BaseChannel):
         )
 
     async def _poll_loop(self) -> None:
-        while self._running:
-            try:
-                await self._poll_once()
-            except asyncio.CancelledError:
-                break
-            except Exception:
-                logger.exception("Discord polling iteration failed")
-                await asyncio.sleep(2)
-            await asyncio.sleep(self.poll_interval_seconds)
+        await run_poll_loop(
+            is_running=lambda: self._running,
+            poll_once=self._poll_once,
+            interval_seconds=self.poll_interval_seconds,
+            logger=logger,
+            error_message="Discord polling iteration failed",
+            retry_delay_seconds=2,
+        )
 
     async def _poll_once(self) -> None:
         """Poll configured Discord channels for new messages."""
