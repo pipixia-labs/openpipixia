@@ -8,6 +8,7 @@ from typing import Any
 
 from google.adk.agents import LlmAgent
 from google.adk.tools import LongRunningFunctionTool
+from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 
 from .mcp_registry import build_mcp_toolsets_from_env
 from .provider import build_adk_model_from_env
@@ -26,6 +27,19 @@ from .tools import (
     web_search,
     write_file,
 )
+
+
+async def _after_agent_memory_callback(callback_context: Any) -> None:
+    """Persist session history into ADK memory when memory service is configured.
+
+    This callback is intentionally tolerant: if memory service is not configured,
+    ADK raises ``ValueError`` and we skip persistence so the main interaction
+    path is never blocked.
+    """
+    try:
+        await callback_context.add_session_to_memory()
+    except ValueError:
+        return
 
 
 def _build_instruction() -> str:
@@ -62,6 +76,7 @@ Available skills:
 def _build_tools() -> list[Any]:
     """Assemble builtin tools plus optional MCP toolsets from env config."""
     tools: list[Any] = [
+        PreloadMemoryTool(),
         list_skills,
         read_skill,
         read_file,
@@ -84,6 +99,7 @@ root_agent = LlmAgent(
     name="sentientagent_v2",
     model=build_adk_model_from_env(),
     instruction=_build_instruction(),
+    after_agent_callback=_after_agent_memory_callback,
     before_model_callback=before_model_debug_callback,
     after_model_callback=after_model_debug_callback,
     tools=_build_tools(),
