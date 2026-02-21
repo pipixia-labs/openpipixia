@@ -46,6 +46,11 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(cfg["security"]["allowNetwork"])
         self.assertEqual(cfg["security"]["execAllowlist"], [])
         self.assertEqual(cfg["tools"]["mcpServers"], {})
+        self.assertTrue(cfg["env"]["OPENHERON_MEMORY_ENABLED"])
+        self.assertEqual(cfg["env"]["OPENHERON_MEMORY_BACKEND"], "markdown")
+        self.assertEqual(cfg["env"]["OPENHERON_COMPACTION_INTERVAL"], 8)
+        self.assertEqual(cfg["env"]["OPENHERON_MCP_DOCTOR_TIMEOUT_SECONDS"], 5)
+        self.assertEqual(cfg["env"]["OPENHERON_DEBUG_MAX_CHARS"], 2000)
 
     def test_save_then_load_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -239,6 +244,94 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(os.environ["OPENHERON_ALLOW_NETWORK"], "0")
         self.assertEqual(os.environ["OPENHERON_EXEC_ALLOWLIST"], "python,ls")
         self.assertNotIn("BRAVE_API_KEY", os.environ)
+
+    def test_bootstrap_env_from_empty_object_falls_back_to_shell_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            path.write_text("{}\n", encoding="utf-8")
+
+            os.environ["OPENHERON_PROVIDER"] = "openai"
+            os.environ["OPENHERON_MEMORY_BACKEND"] = "in_memory"
+            loaded = bootstrap_env_from_config(path)
+
+        self.assertIsNone(loaded)
+        self.assertEqual(os.environ["OPENHERON_PROVIDER"], "openai")
+        self.assertEqual(os.environ["OPENHERON_MEMORY_BACKEND"], "in_memory")
+
+    def test_bootstrap_env_supports_env_override_map_for_runtime_knobs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            cfg = default_config()
+            cfg["env"] = {
+                "OPENHERON_MEMORY_ENABLED": "0",
+                "OPENHERON_MEMORY_BACKEND": "in_memory",
+                "OPENHERON_MEMORY_MARKDOWN_DIR": "/tmp/custom-memory",
+                "OPENHERON_COMPACTION_INTERVAL": 12,
+                "OPENHERON_MCP_REQUIRED_SERVERS": "filesystem,notion",
+                "OPENHERON_SUBAGENT_MAX_CONCURRENCY": 4,
+                "OPENHERON_BOOTSTRAP_MAX_TOTAL_CHARS": 48000,
+                "OPENHERON_DEBUG_MAX_CHARS": 4000,
+                "OPENHERON_WHATSAPP_BRIDGE_PRECHECK": False,
+            }
+            save_config(cfg, path)
+
+            os.environ.pop("OPENHERON_MEMORY_ENABLED", None)
+            os.environ.pop("OPENHERON_MEMORY_BACKEND", None)
+            os.environ.pop("OPENHERON_MEMORY_MARKDOWN_DIR", None)
+            os.environ.pop("OPENHERON_COMPACTION_INTERVAL", None)
+            os.environ.pop("OPENHERON_MCP_REQUIRED_SERVERS", None)
+            os.environ.pop("OPENHERON_SUBAGENT_MAX_CONCURRENCY", None)
+            os.environ.pop("OPENHERON_BOOTSTRAP_MAX_TOTAL_CHARS", None)
+            os.environ.pop("OPENHERON_DEBUG_MAX_CHARS", None)
+            os.environ.pop("OPENHERON_WHATSAPP_BRIDGE_PRECHECK", None)
+            bootstrap_env_from_config(path)
+
+        self.assertEqual(os.environ["OPENHERON_MEMORY_ENABLED"], "0")
+        self.assertEqual(os.environ["OPENHERON_MEMORY_BACKEND"], "in_memory")
+        self.assertEqual(os.environ["OPENHERON_MEMORY_MARKDOWN_DIR"], "/tmp/custom-memory")
+        self.assertEqual(os.environ["OPENHERON_COMPACTION_INTERVAL"], "12")
+        self.assertEqual(os.environ["OPENHERON_MCP_REQUIRED_SERVERS"], "filesystem,notion")
+        self.assertEqual(os.environ["OPENHERON_SUBAGENT_MAX_CONCURRENCY"], "4")
+        self.assertEqual(os.environ["OPENHERON_BOOTSTRAP_MAX_TOTAL_CHARS"], "48000")
+        self.assertEqual(os.environ["OPENHERON_DEBUG_MAX_CHARS"], "4000")
+        self.assertEqual(os.environ["OPENHERON_WHATSAPP_BRIDGE_PRECHECK"], "0")
+
+    def test_bootstrap_default_runtime_env_values_are_visible_and_applied(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            save_config(default_config(), path)
+
+            os.environ.pop("OPENHERON_MEMORY_ENABLED", None)
+            os.environ.pop("OPENHERON_MEMORY_BACKEND", None)
+            os.environ.pop("OPENHERON_COMPACTION_INTERVAL", None)
+            os.environ.pop("OPENHERON_MCP_DOCTOR_TIMEOUT_SECONDS", None)
+            os.environ.pop("OPENHERON_DEBUG_MAX_CHARS", None)
+            os.environ.pop("OPENHERON_COMPACTION_TOKEN_THRESHOLD", None)
+            os.environ.pop("OPENHERON_MCP_REQUIRED_SERVERS", None)
+            bootstrap_env_from_config(path)
+
+        self.assertEqual(os.environ["OPENHERON_MEMORY_ENABLED"], "1")
+        self.assertEqual(os.environ["OPENHERON_MEMORY_BACKEND"], "markdown")
+        self.assertEqual(os.environ["OPENHERON_COMPACTION_INTERVAL"], "8")
+        self.assertEqual(os.environ["OPENHERON_MCP_DOCTOR_TIMEOUT_SECONDS"], "5")
+        self.assertEqual(os.environ["OPENHERON_DEBUG_MAX_CHARS"], "2000")
+        self.assertNotIn("OPENHERON_COMPACTION_TOKEN_THRESHOLD", os.environ)
+        self.assertNotIn("OPENHERON_MCP_REQUIRED_SERVERS", os.environ)
+
+    def test_env_override_map_is_final_layer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            cfg = default_config()
+            cfg["providers"]["google"]["apiKey"] = "google-key-from-provider"
+            cfg["env"] = {
+                "GOOGLE_API_KEY": "google-key-from-env-map",
+            }
+            save_config(cfg, path)
+
+            os.environ.pop("GOOGLE_API_KEY", None)
+            bootstrap_env_from_config(path)
+
+        self.assertEqual(os.environ["GOOGLE_API_KEY"], "google-key-from-env-map")
 
     def test_bootstrap_env_includes_future_enabled_channels(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

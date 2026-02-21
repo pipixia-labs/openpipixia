@@ -116,6 +116,8 @@ _CHANNEL_DEFAULT_VALUE_FIELDS: tuple[tuple[str, str, str, Any], ...] = (
     ("slack", "pollIntervalSeconds", "SLACK_POLL_INTERVAL_SECONDS", 15),
 )
 
+_EXTENSIBLE_MAP_KEYS: frozenset[str] = frozenset({"env"})
+
 
 def get_data_dir() -> Path:
     """Return the data directory used by openheron."""
@@ -130,6 +132,36 @@ def get_config_path() -> Path:
 def get_default_workspace_path() -> Path:
     """Return default workspace path used by onboard."""
     return get_data_dir() / "workspace"
+
+
+def _default_runtime_env_overrides() -> dict[str, Any]:
+    """Return default runtime env overrides shown in generated config.
+
+    These values cover runtime knobs that are primarily consumed from
+    environment variables. Keeping them in config makes defaults explicit and
+    easy to edit.
+    """
+    return {
+        "OPENHERON_MEMORY_ENABLED": True,
+        "OPENHERON_MEMORY_BACKEND": "markdown",
+        "OPENHERON_MEMORY_MARKDOWN_DIR": str(get_default_workspace_path() / "memory"),
+        "OPENHERON_COMPACTION_ENABLED": True,
+        "OPENHERON_COMPACTION_INTERVAL": 8,
+        "OPENHERON_COMPACTION_OVERLAP": 1,
+        "OPENHERON_COMPACTION_TOKEN_THRESHOLD": "",
+        "OPENHERON_COMPACTION_EVENT_RETENTION": "",
+        "OPENHERON_BOOTSTRAP_MAX_CHARS_PER_FILE": 12000,
+        "OPENHERON_BOOTSTRAP_MAX_TOTAL_CHARS": 30000,
+        "OPENHERON_SUBAGENT_MAX_CONCURRENCY": 2,
+        "OPENHERON_MCP_REQUIRED_SERVERS": "",
+        "OPENHERON_MCP_PROBE_RETRY_ATTEMPTS": 2,
+        "OPENHERON_MCP_PROBE_RETRY_BACKOFF_SECONDS": 0.3,
+        "OPENHERON_MCP_DOCTOR_TIMEOUT_SECONDS": 5,
+        "OPENHERON_MCP_GATEWAY_TIMEOUT_SECONDS": 5,
+        "OPENHERON_WHATSAPP_BRIDGE_PRECHECK": True,
+        "OPENHERON_WHATSAPP_BRIDGE_SOURCE": "",
+        "OPENHERON_DEBUG_MAX_CHARS": 2000,
+    }
 
 
 def default_config() -> dict[str, Any]:
@@ -277,10 +309,13 @@ def default_config() -> dict[str, Any]:
             "mcpServers": {},
         },
         "debug": False,
+        # Optional explicit runtime env overrides. Any key here will be mapped
+        # to process env during bootstrap and takes precedence over shell env.
+        "env": _default_runtime_env_overrides(),
     }
 
 
-def _deep_merge(base: Any, override: Any) -> Any:
+def _deep_merge(base: Any, override: Any, *, path: tuple[str, ...] = ()) -> Any:
     """Merge override into base, but keep only keys defined in base schema."""
     if isinstance(base, dict):
         if not isinstance(override, dict):
@@ -290,7 +325,12 @@ def _deep_merge(base: Any, override: Any) -> Any:
             return override
         merged: dict[str, Any] = {}
         for key, base_value in base.items():
-            merged[key] = _deep_merge(base_value, override.get(key))
+            merged[key] = _deep_merge(base_value, override.get(key), path=(*path, key))
+        if path and path[-1] in _EXTENSIBLE_MAP_KEYS:
+            for key, value in override.items():
+                if key in merged:
+                    continue
+                merged[key] = value
         return merged
     return override if override is not None else base
 
@@ -481,6 +521,36 @@ def _channel_env_values(channels: dict[str, Any]) -> dict[str, str]:
     return env
 
 
+def _stringify_env_override(value: Any) -> str:
+    """Convert config `env` values into process-environment string values."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return str(value)
+
+
+def _env_overrides(cfg: dict[str, Any]) -> dict[str, str]:
+    """Read optional env override mapping from config.
+
+    The `env` section is a catch-all escape hatch so every runtime env-based
+    knob can be configured from `config.json`.
+    """
+    raw = cfg.get("env")
+    if not isinstance(raw, dict):
+        return {}
+
+    overrides: dict[str, str] = {}
+    for key, value in raw.items():
+        env_key = str(key).strip()
+        if not env_key:
+            continue
+        overrides[env_key] = _stringify_env_override(value)
+    return overrides
+
+
 def config_to_env(config: dict[str, Any]) -> dict[str, str]:
     """Map config payload into runtime environment variables."""
     cfg = normalize_config(config)
@@ -525,6 +595,8 @@ def config_to_env(config: dict[str, Any]) -> dict[str, str]:
     env.update(channel_env)
     if provider_key_env:
         env[provider_key_env] = provider_api_key
+    # Keep `env` overrides as the final layer so it can override any mapped key.
+    env.update(_env_overrides(cfg))
     return env
 
 
@@ -577,7 +649,17 @@ def bootstrap_env_from_config(config_path: Path | None = None) -> dict[str, Any]
     path = config_path or get_config_path()
     if not path.exists():
         return None
-    cfg = load_config(path)
+
+    # Empty JSON object means "no config overrides" and should fall back to the
+    # current shell environment.
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(raw, dict) or not raw:
+        return None
+
+    cfg = normalize_config(raw)
     # Config file is the source of truth for runtime bootstrap.
     apply_config_to_env(cfg, overwrite=True, clear_missing=True)
     return deepcopy(cfg)

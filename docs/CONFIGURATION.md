@@ -5,9 +5,14 @@
 支持两种配置来源：
 
 - 配置文件（推荐）：`~/.openheron/config.json`
-- 环境变量（覆盖配置文件）
+- 环境变量（在未配置时作为回退）
 
-建议日常只维护 `config.json`，环境变量仅用于临时覆盖。
+优先级规则：
+
+- `config.json` 中已配置的字段会覆盖同名环境变量
+- 当 `config.json` 不存在，或文件内容为空对象 `{}` 时，直接使用环境变量
+
+建议日常只维护 `config.json`，环境变量用于无配置回退或临时排查。
 
 ## `config.json` 关键字段
 
@@ -19,8 +24,23 @@
 - `security.restrictToWorkspace / allowExec / allowNetwork / execAllowlist`
 - `tools.mcpServers`
 - `debug`
+- `env`（可选）：通用环境变量覆盖映射，支持任意运行时 env 配置项
 
 Provider 选择由 `enabled` 控制，建议保持“仅一个 provider 为 true”。
+
+当你需要配置尚未结构化到 `config.json` 字段中的运行时开关时，可使用 `env`：
+
+```json
+{
+  "env": {
+    "OPENHERON_MEMORY_ENABLED": "0",
+    "OPENHERON_MCP_REQUIRED_SERVERS": "filesystem,notion",
+    "OPENHERON_DEBUG_MAX_CHARS": 4000
+  }
+}
+```
+
+默认由 `openheron onboard` 生成的 `config.json` 已包含常见运行时开关的默认值（如 memory/compaction/mcp probe/debug chars 等），可直接在 `env` 段内修改。
 
 ## 常用环境变量
 
