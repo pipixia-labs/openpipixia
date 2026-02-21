@@ -50,8 +50,15 @@ class SafeMcpToolset(McpToolset):
 
     async def get_tools(self, *args: Any, **kwargs: Any) -> list[Any]:
         try:
-            return await super().get_tools(*args, **kwargs)
+            tools = await super().get_tools(*args, **kwargs)
+            mark_available = getattr(self, "mark_available", None)
+            if callable(mark_available):
+                mark_available()
+            return tools
         except Exception as exc:
+            mark_unavailable = getattr(self, "mark_unavailable", None)
+            if callable(mark_unavailable):
+                mark_unavailable(str(exc))
             logger.warning("MCP toolset unavailable; continuing without MCP tools: {}", exc)
             return []
 
@@ -77,12 +84,25 @@ class ManagedMcpToolset(SafeMcpToolset):
         require_confirmation: bool,
     ) -> None:
         self.meta = meta
+        # Runtime health state is tracked for startup diagnostics and operator hints.
+        self.availability_status = "unknown"
+        self.availability_message = ""
         super().__init__(
             connection_params=connection_params,
             tool_filter=tool_filter,
             tool_name_prefix=meta.prefix,
             require_confirmation=require_confirmation,
         )
+
+    def mark_available(self) -> None:
+        """Mark the MCP toolset as reachable in this process."""
+        self.availability_status = "available"
+        self.availability_message = ""
+
+    def mark_unavailable(self, reason: str) -> None:
+        """Mark the MCP toolset as unavailable with a concise reason."""
+        self.availability_status = "unavailable"
+        self.availability_message = reason.strip()
 
 
 def _load_servers_from_env() -> dict[str, Any]:
@@ -128,11 +148,15 @@ def _toolset_meta(toolset: SafeMcpToolset) -> dict[str, str]:
             "name": toolset.meta.name,
             "transport": toolset.meta.transport,
             "prefix": toolset.meta.prefix,
+            "status": toolset.availability_status,
+            "status_message": toolset.availability_message,
         }
     return {
         "name": "unknown",
         "transport": "unknown",
         "prefix": str(getattr(toolset, "tool_name_prefix", "") or ""),
+        "status": "unknown",
+        "status_message": "",
     }
 
 
@@ -212,6 +236,12 @@ async def _probe_one_toolset(
             continue
         break
     elapsed_ms = int((time.perf_counter() - started) * 1000)
+    if isinstance(toolset, ManagedMcpToolset):
+        if status == "ok":
+            toolset.mark_available()
+        else:
+            detail = error or f"{status}/{error_kind or 'unknown'}"
+            toolset.mark_unavailable(detail)
     return {
         "name": meta["name"],
         "transport": meta["transport"],

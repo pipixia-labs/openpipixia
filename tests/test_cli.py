@@ -480,17 +480,24 @@ class CLITests(unittest.TestCase):
         self.assertTrue(issues)
         self.assertIn("required MCP server 'filesystem' failed", issues[0])
 
-    def test_cmd_gateway_exits_when_required_mcp_preflight_fails(self) -> None:
+    def test_cmd_gateway_continues_when_required_mcp_preflight_health_check_fails(self) -> None:
         from openheron import cli
 
         fake_agent = pytypes.SimpleNamespace(name="openheron", tools=[])
         fake_agent_module = pytypes.SimpleNamespace(root_agent=fake_agent)
+        state: dict[str, bool] = {"constructed": False, "started": False, "stopped": False}
 
-        class _UnexpectedGateway:
+        class _FakeGateway:
             def __init__(self, *args, **kwargs):
-                raise AssertionError("Gateway should not be constructed when MCP preflight fails")
+                state["constructed"] = True
 
-        fake_gateway_module = pytypes.SimpleNamespace(Gateway=_UnexpectedGateway)
+            async def start(self):
+                state["started"] = True
+
+            async def stop(self):
+                state["stopped"] = True
+
+        fake_gateway_module = pytypes.SimpleNamespace(Gateway=_FakeGateway)
 
         with patch.dict(
             sys.modules,
@@ -504,18 +511,24 @@ class CLITests(unittest.TestCase):
                     with patch.object(
                         cli,
                         "_required_mcp_preflight",
-                        new=AsyncMock(return_value=["required MCP failed"]),
+                        new=AsyncMock(return_value=["required MCP failed health check (error/transient)"]),
                     ):
-                        with patch.object(cli.logger, "info") as mocked_info:
-                            code = cli._cmd_gateway(
-                                channels="local",
-                                sender_id="u1",
-                                chat_id="c1",
-                                interactive_local=False,
-                            )
-        self.assertEqual(code, 1)
-        messages = [call.args[0] for call in mocked_info.call_args_list if call.args]
-        self.assertIn("[doctor] required MCP failed", messages)
+                        with patch.object(cli.logger, "warning") as mocked_warning:
+                            with patch.object(cli.asyncio, "sleep", new=AsyncMock(side_effect=KeyboardInterrupt)):
+                                code = cli._cmd_gateway(
+                                    channels="local",
+                                    sender_id="u1",
+                                    chat_id="c1",
+                                    interactive_local=False,
+                                )
+        self.assertEqual(code, 0)
+        self.assertTrue(state["constructed"])
+        self.assertTrue(state["started"])
+        self.assertTrue(state["stopped"])
+        messages = [call.args[0] for call in mocked_warning.call_args_list if call.args]
+        self.assertTrue(
+            any("marked unavailable, gateway will continue without this MCP toolset" in msg for msg in messages)
+        )
 
     def test_cmd_gateway_exits_when_whatsapp_bridge_precheck_fails(self) -> None:
         from openheron import cli

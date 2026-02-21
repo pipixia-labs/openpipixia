@@ -87,6 +87,18 @@ class McpRegistryTests(unittest.TestCase):
 
 
 class McpRegistryProbeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_safe_mcp_toolset_marks_unavailable_on_connection_error(self) -> None:
+        toolsets = build_mcp_toolsets(
+            {"filesystem": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]}},
+            log_registered=False,
+        )
+        toolset = toolsets[0]
+        with patch("openheron.mcp_registry.McpToolset.get_tools", new=AsyncMock(side_effect=RuntimeError("boom"))):
+            tools = await toolset.get_tools()
+        self.assertEqual(tools, [])
+        self.assertEqual(toolset.availability_status, "unavailable")
+        self.assertIn("boom", toolset.availability_message)
+
     async def test_probe_mcp_toolsets_ok(self) -> None:
         toolsets = build_mcp_toolsets(
             {"filesystem": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]}},

@@ -1027,6 +1027,11 @@ def _required_mcp_servers_from_env() -> list[str]:
     return _parse_csv_list(os.getenv("OPENHERON_MCP_REQUIRED_SERVERS", ""))
 
 
+def _is_non_blocking_mcp_issue(issue: str) -> bool:
+    """Return true when MCP issue is a runtime connectivity failure only."""
+    return "failed health check" in issue
+
+
 async def _required_mcp_preflight(agent_tools: list[object]) -> list[str]:
     """Validate required MCP servers before gateway startup.
 
@@ -1105,9 +1110,14 @@ def _cmd_gateway(
                 return 1
         mcp_issues = await _required_mcp_preflight(list(getattr(root_agent, "tools", [])))
         if mcp_issues:
-            for item in mcp_issues:
-                logger.info(f"[doctor] {item}")
-            return 1
+            blocking_issues = [item for item in mcp_issues if not _is_non_blocking_mcp_issue(item)]
+            non_blocking_issues = [item for item in mcp_issues if _is_non_blocking_mcp_issue(item)]
+            for item in non_blocking_issues:
+                logger.warning(f"[mcp] {item}; marked unavailable, gateway will continue without this MCP toolset")
+            if blocking_issues:
+                for item in blocking_issues:
+                    logger.info(f"[doctor] {item}")
+                return 1
 
         manager, local_channel = build_channel_manager(
             bus=bus,
@@ -1161,9 +1171,14 @@ def _log_mcp_startup_summary(agent_tools: list[object]) -> None:
         return
     logger.info(f"MCP toolsets: {len(summaries)} server(s) configured")
     for item in summaries:
+        status = str(item.get("status", "unknown"))
+        status_message = str(item.get("status_message", "")).strip()
+        status_suffix = f", status={status}"
+        if status == "unavailable" and status_message:
+            status_suffix = f"{status_suffix}, reason={status_message}"
         logger.info(
             "MCP server "
-            f"{item.get('name')}: transport={item.get('transport')}, prefix={item.get('prefix')}"
+            f"{item.get('name')}: transport={item.get('transport')}, prefix={item.get('prefix')}{status_suffix}"
         )
 
 
