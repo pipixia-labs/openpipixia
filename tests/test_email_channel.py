@@ -6,9 +6,9 @@ import asyncio
 import unittest
 from unittest.mock import patch
 
-from sentientagent_v2.bus.events import OutboundMessage
-from sentientagent_v2.bus.queue import MessageBus
-from sentientagent_v2.channels.email import EmailChannel
+from openheron.bus.events import OutboundMessage
+from openheron.bus.queue import MessageBus
+from openheron.channels.email import EmailChannel
 
 
 class EmailChannelTests(unittest.IsolatedAsyncioTestCase):

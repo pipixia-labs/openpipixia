@@ -1,4 +1,4 @@
-"""Tests for sentientagent_v2 skills behavior."""
+"""Tests for openheron skills behavior."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sentientagent_v2.skills import SkillRegistry, list_skills, read_skill
+from openheron.skills import SkillRegistry, list_skills, read_skill
 
 
 class SkillRegistryTests(unittest.TestCase):
@@ -20,7 +20,7 @@ class SkillRegistryTests(unittest.TestCase):
         os.environ.update(self._env_backup)
 
     def test_discovers_builtin_skill(self) -> None:
-        registry = SkillRegistry(workspace=Path("/tmp/nonexistent-sentientagent_v2-workspace"))
+        registry = SkillRegistry(workspace=Path("/tmp/nonexistent-openheron-workspace"))
         names = [s.name for s in registry.list_skills()]
         self.assertIn("general", names)
 
@@ -34,7 +34,7 @@ class SkillRegistryTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            os.environ["SENTIENTAGENT_V2_WORKSPACE"] = str(workspace)
+            os.environ["OPENHERON_WORKSPACE"] = str(workspace)
             skills = json.loads(list_skills())
             names = {item["name"] for item in skills}
             self.assertIn("workspace-demo", names)
@@ -59,7 +59,7 @@ class SkillRegistryTests(unittest.TestCase):
             self.assertIn("# Custom General", registry.read_skill("general"))
 
     def test_read_skill_raises_for_missing(self) -> None:
-        registry = SkillRegistry(workspace=Path("/tmp/nonexistent-sentientagent_v2-workspace"))
+        registry = SkillRegistry(workspace=Path("/tmp/nonexistent-openheron-workspace"))
         with self.assertRaises(ValueError):
             registry.read_skill("does-not-exist")
 
@@ -91,7 +91,7 @@ class SkillRegistryTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            os.environ["SENTIENTAGENT_V2_WORKSPACE"] = str(workspace)
+            os.environ["OPENHERON_WORKSPACE"] = str(workspace)
             content = read_skill("demo")
             self.assertIn("# Demo Skill", content)
 
@@ -104,15 +104,15 @@ class SkillRegistryTests(unittest.TestCase):
                 "---\nname: custom-skill\ndescription: custom builtin\n---\n\n# Custom Builtin\n",
                 encoding="utf-8",
             )
-            os.environ["SENTIENTAGENT_V2_WORKSPACE"] = "/tmp/nonexistent-sentientagent_v2-workspace"
-            os.environ["SENTIENTAGENT_V2_BUILTIN_SKILLS_DIR"] = str(builtin_dir)
+            os.environ["OPENHERON_WORKSPACE"] = "/tmp/nonexistent-openheron-workspace"
+            os.environ["OPENHERON_BUILTIN_SKILLS_DIR"] = str(builtin_dir)
 
             skills = json.loads(list_skills())
             names = {item["name"] for item in skills}
             self.assertIn("custom-skill", names)
 
     def test_builtin_contains_all_expected_skills(self) -> None:
-        registry = SkillRegistry(workspace=Path("/tmp/nonexistent-sentientagent_v2-workspace"))
+        registry = SkillRegistry(workspace=Path("/tmp/nonexistent-openheron-workspace"))
         names = {item.name for item in registry.list_skills()}
         expected = {
             "cron",

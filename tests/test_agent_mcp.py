@@ -8,10 +8,10 @@ from unittest.mock import patch
 
 class AgentMcpTests(unittest.TestCase):
     def test_build_tools_appends_mcp_toolsets(self) -> None:
-        from sentientagent_v2 import agent
+        from openheron import agent
 
         sentinel_toolset = object()
-        with patch("sentientagent_v2.agent.build_mcp_toolsets_from_env", return_value=[sentinel_toolset]):
+        with patch("openheron.agent.build_mcp_toolsets_from_env", return_value=[sentinel_toolset]):
             tools = agent._build_tools()
 
         self.assertIn(sentinel_toolset, tools)

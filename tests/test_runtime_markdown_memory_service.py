@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from dataclasses import dataclass
 
-from sentientagent_v2.runtime.markdown_memory_service import MarkdownMemoryService
+from openheron.runtime.markdown_memory_service import MarkdownMemoryService
 
 
 @dataclass(slots=True)
@@ -45,13 +45,13 @@ class MarkdownMemoryServiceTests(unittest.TestCase):
                     _Event(id="e2", author="agent", content=_Content(parts=[_Part(text="Noted project details")])),
                 ]
                 await service.add_events_to_memory(
-                    app_name="sentientagent_v2",
+                    app_name="openheron",
                     user_id="user-1",
                     session_id="s1",
                     events=events,
                 )
                 response = await service.search_memory(
-                    app_name="sentientagent_v2",
+                    app_name="openheron",
                     user_id="user-1",
                     query="alpha",
                 )
@@ -66,17 +66,17 @@ class MarkdownMemoryServiceTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 service = MarkdownMemoryService(root_dir=tmp)
                 await service.add_memory(
-                    app_name="sentientagent_v2",
+                    app_name="openheron",
                     user_id="alice",
                     memories=["Alice likes green tea"],
                 )
                 await service.add_memory(
-                    app_name="sentientagent_v2",
+                    app_name="openheron",
                     user_id="bob",
                     memories=["Bob likes black coffee"],
                 )
                 response = await service.search_memory(
-                    app_name="sentientagent_v2",
+                    app_name="openheron",
                     user_id="bob",
                     query="green tea",
                 )
@@ -89,7 +89,7 @@ class MarkdownMemoryServiceTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 service = MarkdownMemoryService(root_dir=tmp)
                 session = _Session(
-                    app_name="sentientagent_v2",
+                    app_name="openheron",
                     user_id="user-2",
                     id="session-1",
                     events=[
@@ -103,7 +103,7 @@ class MarkdownMemoryServiceTests(unittest.TestCase):
                 await service.add_session_to_memory(session)
                 await service.add_session_to_memory(session)
                 response = await service.search_memory(
-                    app_name="sentientagent_v2",
+                    app_name="openheron",
                     user_id="user-2",
                     query="deduplication",
                 )
@@ -116,12 +116,12 @@ class MarkdownMemoryServiceTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 service = MarkdownMemoryService(root_dir=tmp)
                 await service.add_memory(
-                    app_name="sentientagent_v2",
+                    app_name="openheron",
                     user_id="user-3",
                     memories=["Lives in Seattle", "Prefers morning meetings"],
                 )
                 response = await service.search_memory(
-                    app_name="sentientagent_v2",
+                    app_name="openheron",
                     user_id="user-3",
                     query="Seattle",
                 )

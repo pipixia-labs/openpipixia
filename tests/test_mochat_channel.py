@@ -6,9 +6,9 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from sentientagent_v2.bus.events import OutboundMessage
-from sentientagent_v2.bus.queue import MessageBus
-from sentientagent_v2.channels.mochat import MochatChannel
+from openheron.bus.events import OutboundMessage
+from openheron.bus.queue import MessageBus
+from openheron.channels.mochat import MochatChannel
 
 
 class MochatChannelTests(unittest.IsolatedAsyncioTestCase):

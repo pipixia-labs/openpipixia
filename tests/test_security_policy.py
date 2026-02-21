@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sentientagent_v2.security import PathGuard, SecurityPolicy, load_security_policy
+from openheron.security import PathGuard, SecurityPolicy, load_security_policy
 
 
 class SecurityPolicyTests(unittest.TestCase):
@@ -20,7 +20,7 @@ class SecurityPolicyTests(unittest.TestCase):
 
     def test_load_security_policy_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            os.environ["SENTIENTAGENT_V2_WORKSPACE"] = tmp
+            os.environ["OPENHERON_WORKSPACE"] = tmp
             policy = load_security_policy()
 
         self.assertFalse(policy.restrict_to_workspace)
@@ -30,10 +30,10 @@ class SecurityPolicyTests(unittest.TestCase):
 
     def test_policy_reads_explicit_flags(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            os.environ["SENTIENTAGENT_V2_WORKSPACE"] = tmp
-            os.environ["SENTIENTAGENT_V2_RESTRICT_TO_WORKSPACE"] = "1"
-            os.environ["SENTIENTAGENT_V2_ALLOW_EXEC"] = "0"
-            os.environ["SENTIENTAGENT_V2_ALLOW_NETWORK"] = "0"
+            os.environ["OPENHERON_WORKSPACE"] = tmp
+            os.environ["OPENHERON_RESTRICT_TO_WORKSPACE"] = "1"
+            os.environ["OPENHERON_ALLOW_EXEC"] = "0"
+            os.environ["OPENHERON_ALLOW_NETWORK"] = "0"
             policy = load_security_policy()
 
         self.assertTrue(policy.restrict_to_workspace)
@@ -42,8 +42,8 @@ class SecurityPolicyTests(unittest.TestCase):
 
     def test_allowlist_is_parsed_and_deduplicated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            os.environ["SENTIENTAGENT_V2_WORKSPACE"] = tmp
-            os.environ["SENTIENTAGENT_V2_EXEC_ALLOWLIST"] = "python, ls,python"
+            os.environ["OPENHERON_WORKSPACE"] = tmp
+            os.environ["OPENHERON_EXEC_ALLOWLIST"] = "python, ls,python"
             policy = load_security_policy()
 
         self.assertEqual(policy.exec_allowlist, ("python", "ls"))

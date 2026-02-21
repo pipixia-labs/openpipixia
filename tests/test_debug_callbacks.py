@@ -8,14 +8,14 @@ import types as pytypes
 import unittest
 from unittest.mock import patch
 
-from sentientagent_v2.runtime.debug_callbacks import after_model_debug_callback, before_model_debug_callback
+from openheron.runtime.debug_callbacks import after_model_debug_callback, before_model_debug_callback
 
 
 class DebugCallbacksTests(unittest.TestCase):
     def test_before_model_emits_request_text_when_debug_enabled(self) -> None:
         callback_context = pytypes.SimpleNamespace(
             invocation_id="inv-1",
-            agent_name="sentientagent_v2",
+            agent_name="openheron",
             user_id="u-1",
             session=pytypes.SimpleNamespace(id="s-1"),
         )
@@ -31,8 +31,8 @@ class DebugCallbacksTests(unittest.TestCase):
             tools_dict={"web_search": object(), "exec": object()},
         )
 
-        with patch.dict(os.environ, {"SENTIENTAGENT_V2_DEBUG": "1"}, clear=False):
-            with patch("sentientagent_v2.runtime.debug_callbacks._write_debug") as mocked_emit:
+        with patch.dict(os.environ, {"OPENHERON_DEBUG": "1"}, clear=False):
+            with patch("openheron.runtime.debug_callbacks._write_debug") as mocked_emit:
                 result = before_model_debug_callback(callback_context, llm_request)
 
         self.assertIsNone(result)
@@ -46,7 +46,7 @@ class DebugCallbacksTests(unittest.TestCase):
     def test_after_model_emits_response_text_when_debug_enabled(self) -> None:
         callback_context = pytypes.SimpleNamespace(
             invocation_id="inv-2",
-            agent_name="sentientagent_v2",
+            agent_name="openheron",
             user_id="u-2",
             session=pytypes.SimpleNamespace(id="s-2"),
         )
@@ -59,8 +59,8 @@ class DebugCallbacksTests(unittest.TestCase):
             content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="Tomorrow is cloudy.")]),
         )
 
-        with patch.dict(os.environ, {"SENTIENTAGENT_V2_DEBUG": "1"}, clear=False):
-            with patch("sentientagent_v2.runtime.debug_callbacks._write_debug") as mocked_emit:
+        with patch.dict(os.environ, {"OPENHERON_DEBUG": "1"}, clear=False):
+            with patch("openheron.runtime.debug_callbacks._write_debug") as mocked_emit:
                 result = after_model_debug_callback(callback_context, llm_response)
 
         self.assertIsNone(result)
@@ -87,8 +87,8 @@ class DebugCallbacksTests(unittest.TestCase):
             content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="ok")]),
         )
 
-        with patch.dict(os.environ, {"SENTIENTAGENT_V2_DEBUG": "0"}, clear=False):
-            with patch("sentientagent_v2.runtime.debug_callbacks._write_debug") as mocked_emit:
+        with patch.dict(os.environ, {"OPENHERON_DEBUG": "0"}, clear=False):
+            with patch("openheron.runtime.debug_callbacks._write_debug") as mocked_emit:
                 before_model_debug_callback(callback_context, llm_request)
                 after_model_debug_callback(callback_context, llm_response)
 
@@ -115,7 +115,7 @@ class DebugCallbacksTests(unittest.TestCase):
             tools_dict={},
         )
 
-        with patch.dict(os.environ, {"SENTIENTAGENT_V2_DEBUG": "0"}, clear=False):
+        with patch.dict(os.environ, {"OPENHERON_DEBUG": "0"}, clear=False):
             before_model_debug_callback(callback_context, llm_request)
 
         self.assertIsInstance(function_call.id, str)
@@ -154,7 +154,7 @@ class DebugCallbacksTests(unittest.TestCase):
             tools_dict={},
         )
 
-        with patch.dict(os.environ, {"SENTIENTAGENT_V2_DEBUG": "0"}, clear=False):
+        with patch.dict(os.environ, {"OPENHERON_DEBUG": "0"}, clear=False):
             before_model_debug_callback(callback_context, llm_request)
 
         self.assertIsInstance(function_call.id, str)
@@ -194,7 +194,7 @@ class DebugCallbacksTests(unittest.TestCase):
             tools_dict={},
         )
 
-        with patch.dict(os.environ, {"SENTIENTAGENT_V2_DEBUG": "0"}, clear=False):
+        with patch.dict(os.environ, {"OPENHERON_DEBUG": "0"}, clear=False):
             before_model_debug_callback(callback_context, llm_request)
 
         self.assertLessEqual(len(function_call.id), 40)

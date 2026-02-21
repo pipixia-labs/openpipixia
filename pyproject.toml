@@ -1,5 +1,5 @@
 [project]
-name = "sentientagent_v2"
+name = "openheron"
 version = "0.1.0"
 description = "A lightweight skills-first agent built with Google ADK"
 requires-python = ">=3.11"
@@ -17,18 +17,18 @@ dependencies = [
 ]
 
 [project.scripts]
-sentientagent_v2 = "sentientagent_v2.cli:main"
+openheron = "openheron.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["sentientagent_v2"]
+packages = ["openheron"]
 
 [tool.hatch.build]
 include = [
-    "sentientagent_v2/**/*.py",
-    "sentientagent_v2/bridge/**",
-    "sentientagent_v2/skills/**",
+    "openheron/**/*.py",
+    "openheron/bridge/**",
+    "openheron/skills/**",
 ]

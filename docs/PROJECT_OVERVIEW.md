@@ -1,8 +1,8 @@
-# sentientagent_v2 项目说明
+# openheron 项目说明
 
 ## 1. 项目定位
 
-`sentientagent_v2` 是一个基于 Google ADK 的轻量级 Agent 系统，目标是用尽量小的实现覆盖完整的 Agent 运行链路：
+`openheron` 是一个基于 Google ADK 的轻量级 Agent 系统，目标是用尽量小的实现覆盖完整的 Agent 运行链路：
 
 - 多渠道消息接入（local/feishu/telegram/whatsapp/discord/mochat/dingtalk/email/slack/qq）
 - Skills 驱动的能力扩展（`SKILL.md`）
@@ -15,20 +15,20 @@
 
 ### 2.1 关键模块
 
-- `sentientagent_v2/agent.py`
+- `openheron/agent.py`
   - 定义根代理 `root_agent`（`LlmAgent`）
   - 注册工具（含 `PreloadMemoryTool`、`spawn_subagent`）
   - `after_agent_callback` 中调用 `add_session_to_memory()` 做记忆写入
-- `sentientagent_v2/gateway.py`
+- `openheron/gateway.py`
   - 网关主循环：消费 inbound，调用 ADK Runner，发布 outbound
   - 处理 `/help`、`/new` 等会话命令
-- `sentientagent_v2/runtime/runner_factory.py`
+- `openheron/runtime/runner_factory.py`
   - 统一创建 `Runner`，启用 `ResumabilityConfig` 与 `EventsCompactionConfig`
-- `sentientagent_v2/runtime/session_service.py`
+- `openheron/runtime/session_service.py`
   - 会话存储服务（SQLite `DatabaseSessionService`）
-- `sentientagent_v2/runtime/memory_service.py`
+- `openheron/runtime/memory_service.py`
   - 记忆服务工厂（`in_memory` / `markdown`）
-- `sentientagent_v2/runtime/markdown_memory_service.py`
+- `openheron/runtime/markdown_memory_service.py`
   - 本地 Markdown 记忆实现（按 `app_name/user_id` 分目录）
 
 ### 2.2 消息处理主链路
@@ -46,7 +46,7 @@
 - 用户隔离：`user_id` 作为用户级作用域
 - 会话隔离：`session_id` 作为单轮/多轮上下文容器
 - 默认 session key：`{channel}:{chat_id}`（由 `InboundMessage.session_key` 生成）
-- Session 持久化：SQLite，默认 `~/.sentientagent_v2/database/sessions.db`
+- Session 持久化：SQLite，默认 `~/.openheron/database/sessions.db`
 
 ### 3.2 `/new` 与 `/help`
 
@@ -65,15 +65,15 @@
 
 ### 3.3 Memory 后端
 
-通过 `SENTIENTAGENT_V2_MEMORY_BACKEND` 选择：
+通过 `OPENHERON_MEMORY_BACKEND` 选择：
 
 - `markdown`（默认）
-  - 本地落盘到 `SENTIENTAGENT_V2_MEMORY_MARKDOWN_DIR`
-  - 默认目录：`~/.sentientagent_v2/memory`
+  - 本地落盘到 `OPENHERON_MEMORY_MARKDOWN_DIR`
+  - 默认目录：`~/.openheron/memory`
 - `in_memory`（调试）
   - 进程内记忆，不落盘
 
-可通过 `SENTIENTAGENT_V2_MEMORY_ENABLED` 控制是否启用记忆（默认开启）。
+可通过 `OPENHERON_MEMORY_ENABLED` 控制是否启用记忆（默认开启）。
 
 ### 3.4 Markdown Memory 落盘结构
 
@@ -98,11 +98,11 @@
 
 可配置项：
 
-- `SENTIENTAGENT_V2_COMPACTION_ENABLED`（默认 `1`）
-- `SENTIENTAGENT_V2_COMPACTION_INTERVAL`（默认 `8`）
-- `SENTIENTAGENT_V2_COMPACTION_OVERLAP`（默认 `1`）
-- `SENTIENTAGENT_V2_COMPACTION_TOKEN_THRESHOLD`（可选，正整数）
-- `SENTIENTAGENT_V2_COMPACTION_EVENT_RETENTION`（可选，非负整数）
+- `OPENHERON_COMPACTION_ENABLED`（默认 `1`）
+- `OPENHERON_COMPACTION_INTERVAL`（默认 `8`）
+- `OPENHERON_COMPACTION_OVERLAP`（默认 `1`）
+- `OPENHERON_COMPACTION_TOKEN_THRESHOLD`（可选，正整数）
+- `OPENHERON_COMPACTION_EVENT_RETENTION`（可选，非负整数）
 
 注意：`TOKEN_THRESHOLD` 和 `EVENT_RETENTION` 必须成对设置；只设置一个会被忽略（防止启动时报错）。
 
@@ -125,25 +125,25 @@
 ### 6.1 推荐初始化
 
 ```bash
-sentientagent_v2 onboard
+openheron onboard
 ```
 
 会生成：
 
-- `~/.sentientagent_v2/config.json`
-- `~/.sentientagent_v2/workspace`
+- `~/.openheron/config.json`
+- `~/.openheron/workspace`
 
 ### 6.2 常用运行方式
 
 ```bash
 # 单轮调用
-python -m sentientagent_v2.cli -m "Describe what you can do"
+python -m openheron.cli -m "Describe what you can do"
 
 # 网关本地模式
-python -m sentientagent_v2.cli gateway-local
+python -m openheron.cli gateway-local
 
 # 网关多渠道模式
-sentientagent_v2 gateway --channels local,feishu --interactive-local
+openheron gateway --channels local,feishu --interactive-local
 ```
 
 ### 6.3 测试

@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sentientagent_v2.config import (
+from openheron.config import (
     apply_config_to_env,
     bootstrap_env_from_config,
     default_config,
@@ -64,17 +64,17 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(loaded["channels"]["feishu"]["appSecret"], "app-secret-1")
 
     def test_apply_config_to_env_respects_existing_values(self) -> None:
-        os.environ["SENTIENTAGENT_V2_MODEL"] = "from-shell"
+        os.environ["OPENHERON_MODEL"] = "from-shell"
         os.environ["GOOGLE_API_KEY"] = "key-from-shell"
         cfg = default_config()
         cfg["providers"]["google"]["model"] = "from-config"
         cfg["providers"]["google"]["apiKey"] = "key-from-config"
         apply_config_to_env(cfg, overwrite=False)
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_MODEL"], "from-shell")
+        self.assertEqual(os.environ["OPENHERON_MODEL"], "from-shell")
         self.assertEqual(os.environ["GOOGLE_API_KEY"], "key-from-shell")
 
         apply_config_to_env(cfg, overwrite=True)
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_MODEL"], "from-config")
+        self.assertEqual(os.environ["OPENHERON_MODEL"], "from-config")
         self.assertEqual(os.environ["GOOGLE_API_KEY"], "key-from-config")
 
     def test_bootstrap_env_from_config(self) -> None:
@@ -140,7 +140,7 @@ class ConfigTests(unittest.TestCase):
             cfg["security"]["execAllowlist"] = ["python", "ls", "python"]
             save_config(cfg, path)
 
-            os.environ.pop("SENTIENTAGENT_V2_CHANNELS", None)
+            os.environ.pop("OPENHERON_CHANNELS", None)
             os.environ.pop("FEISHU_APP_ID", None)
             os.environ.pop("FEISHU_ALLOW_FROM", None)
             os.environ.pop("TELEGRAM_BOT_TOKEN", None)
@@ -180,18 +180,18 @@ class ConfigTests(unittest.TestCase):
             os.environ.pop("QQ_APP_ID", None)
             os.environ.pop("QQ_SECRET", None)
             os.environ.pop("QQ_ALLOW_FROM", None)
-            os.environ.pop("SENTIENTAGENT_V2_SESSION_DB_URL", None)
+            os.environ.pop("OPENHERON_SESSION_DB_URL", None)
             os.environ.pop("GOOGLE_API_KEY", None)
             os.environ.pop("BRAVE_API_KEY", None)
-            os.environ.pop("SENTIENTAGENT_V2_WEB_SEARCH_ENABLED", None)
-            os.environ.pop("SENTIENTAGENT_V2_RESTRICT_TO_WORKSPACE", None)
-            os.environ.pop("SENTIENTAGENT_V2_ALLOW_EXEC", None)
-            os.environ.pop("SENTIENTAGENT_V2_ALLOW_NETWORK", None)
-            os.environ.pop("SENTIENTAGENT_V2_EXEC_ALLOWLIST", None)
+            os.environ.pop("OPENHERON_WEB_SEARCH_ENABLED", None)
+            os.environ.pop("OPENHERON_RESTRICT_TO_WORKSPACE", None)
+            os.environ.pop("OPENHERON_ALLOW_EXEC", None)
+            os.environ.pop("OPENHERON_ALLOW_NETWORK", None)
+            os.environ.pop("OPENHERON_EXEC_ALLOWLIST", None)
             loaded = bootstrap_env_from_config(path)
 
         self.assertIsNotNone(loaded)
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_CHANNELS"], "feishu,telegram,whatsapp,discord,mochat,dingtalk,email,slack,qq")
+        self.assertEqual(os.environ["OPENHERON_CHANNELS"], "feishu,telegram,whatsapp,discord,mochat,dingtalk,email,slack,qq")
         self.assertEqual(os.environ["FEISHU_APP_ID"], "app-id")
         self.assertEqual(os.environ["FEISHU_ALLOW_FROM"], "ou_1,ou_2")
         self.assertEqual(os.environ["TELEGRAM_BOT_TOKEN"], "tg-token")
@@ -231,13 +231,13 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(os.environ["QQ_APP_ID"], "qq-app-id")
         self.assertEqual(os.environ["QQ_SECRET"], "qq-secret")
         self.assertEqual(os.environ["QQ_ALLOW_FROM"], "qq_u1,qq_u2")
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_SESSION_DB_URL"], "sqlite+aiosqlite:////tmp/sessions.db")
+        self.assertEqual(os.environ["OPENHERON_SESSION_DB_URL"], "sqlite+aiosqlite:////tmp/sessions.db")
         self.assertEqual(os.environ["GOOGLE_API_KEY"], "google-key")
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_WEB_SEARCH_ENABLED"], "0")
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_RESTRICT_TO_WORKSPACE"], "1")
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_ALLOW_EXEC"], "0")
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_ALLOW_NETWORK"], "0")
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_EXEC_ALLOWLIST"], "python,ls")
+        self.assertEqual(os.environ["OPENHERON_WEB_SEARCH_ENABLED"], "0")
+        self.assertEqual(os.environ["OPENHERON_RESTRICT_TO_WORKSPACE"], "1")
+        self.assertEqual(os.environ["OPENHERON_ALLOW_EXEC"], "0")
+        self.assertEqual(os.environ["OPENHERON_ALLOW_NETWORK"], "0")
+        self.assertEqual(os.environ["OPENHERON_EXEC_ALLOWLIST"], "python,ls")
         self.assertNotIn("BRAVE_API_KEY", os.environ)
 
     def test_bootstrap_env_includes_future_enabled_channels(self) -> None:
@@ -249,10 +249,10 @@ class ConfigTests(unittest.TestCase):
             cfg["channels"]["qq"]["enabled"] = True
             save_config(cfg, path)
 
-            os.environ.pop("SENTIENTAGENT_V2_CHANNELS", None)
+            os.environ.pop("OPENHERON_CHANNELS", None)
             bootstrap_env_from_config(path)
 
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_CHANNELS"], "telegram,qq")
+        self.assertEqual(os.environ["OPENHERON_CHANNELS"], "telegram,qq")
 
     def test_bootstrap_env_overwrites_and_clears_managed_keys(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -300,7 +300,7 @@ class ConfigTests(unittest.TestCase):
             os.environ["GOOGLE_API_KEY"] = "stale-google-key"
             bootstrap_env_from_config(path)
 
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_PROVIDER"], "openai")
+        self.assertEqual(os.environ["OPENHERON_PROVIDER"], "openai")
         self.assertEqual(os.environ["OPENAI_API_KEY"], "openai-key-from-shell")
         self.assertNotIn("GOOGLE_API_KEY", os.environ)
 
@@ -327,18 +327,18 @@ class ConfigTests(unittest.TestCase):
             cfg["providers"]["openai"]["model"] = "gpt-4.1-mini"
             save_config(cfg, path)
 
-            os.environ.pop("SENTIENTAGENT_V2_PROVIDER", None)
-            os.environ.pop("SENTIENTAGENT_V2_PROVIDER_ENABLED", None)
+            os.environ.pop("OPENHERON_PROVIDER", None)
+            os.environ.pop("OPENHERON_PROVIDER_ENABLED", None)
             os.environ.pop("GOOGLE_API_KEY", None)
             os.environ.pop("OPENAI_API_KEY", None)
-            os.environ.pop("SENTIENTAGENT_V2_MODEL", None)
+            os.environ.pop("OPENHERON_MODEL", None)
             bootstrap_env_from_config(path)
 
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_PROVIDER"], "openai")
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_PROVIDER_ENABLED"], "1")
+        self.assertEqual(os.environ["OPENHERON_PROVIDER"], "openai")
+        self.assertEqual(os.environ["OPENHERON_PROVIDER_ENABLED"], "1")
         self.assertEqual(os.environ["OPENAI_API_KEY"], "openai-key-selected")
         self.assertNotIn("GOOGLE_API_KEY", os.environ)
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_MODEL"], "openai/gpt-4.1-mini")
+        self.assertEqual(os.environ["OPENHERON_MODEL"], "openai/gpt-4.1-mini")
 
     def test_provider_api_base_and_extra_headers_are_exported(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -352,17 +352,17 @@ class ConfigTests(unittest.TestCase):
             cfg["providers"]["openrouter"]["extraHeaders"] = {"X-Trace-Id": "trace-001"}
             save_config(cfg, path)
 
-            os.environ.pop("SENTIENTAGENT_V2_PROVIDER", None)
-            os.environ.pop("SENTIENTAGENT_V2_PROVIDER_API_BASE", None)
-            os.environ.pop("SENTIENTAGENT_V2_PROVIDER_EXTRA_HEADERS_JSON", None)
+            os.environ.pop("OPENHERON_PROVIDER", None)
+            os.environ.pop("OPENHERON_PROVIDER_API_BASE", None)
+            os.environ.pop("OPENHERON_PROVIDER_EXTRA_HEADERS_JSON", None)
             os.environ.pop("OPENROUTER_API_KEY", None)
             bootstrap_env_from_config(path)
 
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_PROVIDER"], "openrouter")
+        self.assertEqual(os.environ["OPENHERON_PROVIDER"], "openrouter")
         self.assertEqual(os.environ["OPENROUTER_API_KEY"], "openrouter-key")
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_PROVIDER_API_BASE"], "https://example.gateway/v1")
+        self.assertEqual(os.environ["OPENHERON_PROVIDER_API_BASE"], "https://example.gateway/v1")
         self.assertEqual(
-            os.environ["SENTIENTAGENT_V2_PROVIDER_EXTRA_HEADERS_JSON"],
+            os.environ["OPENHERON_PROVIDER_EXTRA_HEADERS_JSON"],
             '{"X-Trace-Id":"trace-001"}',
         )
 
@@ -377,12 +377,12 @@ class ConfigTests(unittest.TestCase):
             cfg["providers"]["active"] = "openai"
             save_config(cfg, path)
 
-            os.environ.pop("SENTIENTAGENT_V2_PROVIDER", None)
+            os.environ.pop("OPENHERON_PROVIDER", None)
             os.environ.pop("GOOGLE_API_KEY", None)
             os.environ.pop("OPENAI_API_KEY", None)
             bootstrap_env_from_config(path)
 
-        self.assertEqual(os.environ["SENTIENTAGENT_V2_PROVIDER"], "google")
+        self.assertEqual(os.environ["OPENHERON_PROVIDER"], "google")
         self.assertEqual(os.environ["GOOGLE_API_KEY"], "google-key-selected")
         self.assertNotIn("OPENAI_API_KEY", os.environ)
 
@@ -418,10 +418,10 @@ class ConfigTests(unittest.TestCase):
             }
             save_config(cfg, path)
 
-            os.environ.pop("SENTIENTAGENT_V2_MCP_SERVERS_JSON", None)
+            os.environ.pop("OPENHERON_MCP_SERVERS_JSON", None)
             bootstrap_env_from_config(path)
 
-        raw = os.environ.get("SENTIENTAGENT_V2_MCP_SERVERS_JSON")
+        raw = os.environ.get("OPENHERON_MCP_SERVERS_JSON")
         self.assertIsNotNone(raw)
         parsed = json.loads(raw or "{}")
         self.assertIn("filesystem", parsed)

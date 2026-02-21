@@ -1,4 +1,4 @@
-"""Tests for sentientagent_v2 CLI behavior."""
+"""Tests for openheron CLI behavior."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 class CLITests(unittest.TestCase):
     def test_message_mode_dispatch(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
             with patch.object(cli, "_cmd_message", return_value=0) as mocked:
@@ -27,7 +27,7 @@ class CLITests(unittest.TestCase):
                 mocked_bootstrap.assert_called_once()
 
     def test_onboard_mode_dispatch(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
             with patch.object(cli, "_cmd_onboard", return_value=0) as mocked_onboard:
@@ -38,7 +38,7 @@ class CLITests(unittest.TestCase):
                 mocked_bootstrap.assert_not_called()
 
     def test_doctor_mode_bootstraps_config(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
             with patch.object(cli, "_cmd_doctor", return_value=0):
@@ -48,7 +48,7 @@ class CLITests(unittest.TestCase):
                 mocked_bootstrap.assert_called_once()
 
     def test_doctor_mode_passes_json_and_verbose_flags(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "bootstrap_env_from_config"):
             with patch.object(cli, "_cmd_doctor", return_value=0) as mocked_doctor:
@@ -58,7 +58,7 @@ class CLITests(unittest.TestCase):
                 mocked_doctor.assert_called_once_with(output_json=True, verbose=True)
 
     def test_provider_login_mode_dispatch(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
             with patch.object(cli, "_cmd_provider_login", return_value=0) as mocked_login:
@@ -69,7 +69,7 @@ class CLITests(unittest.TestCase):
                 mocked_login.assert_called_once_with("openai-codex")
 
     def test_provider_list_mode_dispatch(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
             with patch.object(cli, "_cmd_provider_list", return_value=0) as mocked_list:
@@ -80,7 +80,7 @@ class CLITests(unittest.TestCase):
                 mocked_list.assert_called_once_with()
 
     def test_cmd_provider_list_includes_runtime_and_default_model(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli.logger, "info") as mocked_info:
             code = cli._cmd_provider_list()
@@ -90,7 +90,7 @@ class CLITests(unittest.TestCase):
         self.assertTrue(any("default_model=" in line for line in lines))
 
     def test_provider_status_mode_dispatch(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
             with patch.object(cli, "_cmd_provider_status", return_value=0) as mocked_status:
@@ -101,7 +101,7 @@ class CLITests(unittest.TestCase):
                 mocked_status.assert_called_once_with(output_json=True)
 
     def test_channels_login_mode_dispatch(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
             with patch.object(cli, "_cmd_channels_login", return_value=0) as mocked_login:
@@ -112,7 +112,7 @@ class CLITests(unittest.TestCase):
                 mocked_login.assert_called_once_with(channel_name="whatsapp")
 
     def test_channels_bridge_start_mode_dispatch(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
             with patch.object(cli, "_cmd_channels_bridge_start", return_value=0) as mocked_start:
@@ -123,7 +123,7 @@ class CLITests(unittest.TestCase):
                 mocked_start.assert_called_once_with(channel_name="whatsapp")
 
     def test_cmd_provider_login_rejects_non_oauth_provider(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli.logger, "info") as mocked_info:
             code = cli._cmd_provider_login("openai")
@@ -131,7 +131,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("Unknown OAuth provider", mocked_info.call_args[0][0])
 
     def test_cmd_provider_login_invokes_registered_handler(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         handler = Mock()
         with patch.dict(cli._PROVIDER_LOGIN_HANDLERS, {"openai_codex": handler}, clear=False):
@@ -141,7 +141,7 @@ class CLITests(unittest.TestCase):
         handler.assert_called_once_with()
 
     def test_cmd_provider_login_accepts_alias(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         handler = Mock()
         with patch.dict(cli._PROVIDER_LOGIN_HANDLERS, {"openai_codex": handler}, clear=False):
@@ -151,7 +151,7 @@ class CLITests(unittest.TestCase):
         handler.assert_called_once_with()
 
     def test_cmd_provider_login_openai_codex_uses_cached_valid_token(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         token = pytypes.SimpleNamespace(access="token", account_id="acct_1")
         fake_oauth_module = pytypes.SimpleNamespace(
@@ -165,7 +165,7 @@ class CLITests(unittest.TestCase):
         fake_oauth_module.login_oauth_interactive.assert_not_called()
 
     def test_cmd_provider_login_openai_codex_rejects_missing_account_id(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         token = pytypes.SimpleNamespace(access="token", account_id="")
         fake_oauth_module = pytypes.SimpleNamespace(
@@ -182,7 +182,7 @@ class CLITests(unittest.TestCase):
         self.assertTrue(any("account_id missing in token" in line for line in lines))
 
     def test_provider_oauth_health_non_oauth_provider(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         issue, status = cli._provider_oauth_health("google")
         self.assertIsNone(issue)
@@ -191,7 +191,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(status["message"], "not_required")
 
     def test_provider_oauth_health_openai_codex_missing_token(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "_check_openai_codex_oauth", return_value=(False, "token missing")):
             issue, status = cli._provider_oauth_health("openai_codex")
@@ -202,7 +202,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(status["message"], "token missing")
 
     def test_provider_oauth_health_openai_codex_authenticated(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "_check_openai_codex_oauth", return_value=(True, "account_id=user_1")):
             issue, status = cli._provider_oauth_health("openai_codex")
@@ -212,7 +212,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(status["message"], "account_id=user_1")
 
     def test_check_github_copilot_oauth_non_invasive_missing_cache(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(os.environ, {"GITHUB_COPILOT_TOKEN_DIR": tmp}, clear=False):
@@ -221,7 +221,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(detail, "access_token_missing")
 
     def test_check_github_copilot_oauth_non_invasive_valid_api_key_cache(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with tempfile.TemporaryDirectory() as tmp:
             cache = {
@@ -236,7 +236,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("api_key_cached_until=", detail)
 
     def test_provider_oauth_health_github_copilot_missing_cache_returns_issue(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "_check_github_copilot_oauth_non_invasive", return_value=(False, "access_token_missing")):
             issue, status = cli._provider_oauth_health("github_copilot")
@@ -247,7 +247,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(status["message"], "access_token_missing")
 
     def test_cmd_doctor_includes_mcp_health_failures(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         fake_registry = pytypes.SimpleNamespace(workspace=Path("/tmp"), list_skills=lambda: [])
         fake_session_cfg = pytypes.SimpleNamespace(db_url="sqlite+aiosqlite:////tmp/sessions.db")
@@ -269,13 +269,13 @@ class CLITests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "SENTIENTAGENT_V2_PROVIDER": "google",
-                "SENTIENTAGENT_V2_PROVIDER_ENABLED": "1",
+                "OPENHERON_PROVIDER": "google",
+                "OPENHERON_PROVIDER_ENABLED": "1",
                 "GOOGLE_API_KEY": "k",
             },
             clear=False,
         ):
-            with patch("sentientagent_v2.cli.shutil.which", return_value="/usr/bin/adk"):
+            with patch("openheron.cli.shutil.which", return_value="/usr/bin/adk"):
                 with patch.object(cli, "validate_provider_runtime", return_value=None):
                     with patch.object(cli, "get_registry", return_value=fake_registry):
                         with patch.object(cli, "load_session_config", return_value=fake_session_cfg):
@@ -303,7 +303,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("MCP server 'filesystem' health check failed", info_text)
 
     def test_cmd_doctor_json_output_for_automation(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         fake_registry = pytypes.SimpleNamespace(workspace=Path("/tmp"), list_skills=lambda: [])
         fake_session_cfg = pytypes.SimpleNamespace(db_url="sqlite+aiosqlite:////tmp/sessions.db")
@@ -316,13 +316,13 @@ class CLITests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "SENTIENTAGENT_V2_PROVIDER": "google",
-                "SENTIENTAGENT_V2_PROVIDER_ENABLED": "1",
+                "OPENHERON_PROVIDER": "google",
+                "OPENHERON_PROVIDER_ENABLED": "1",
                 "GOOGLE_API_KEY": "k",
             },
             clear=False,
         ):
-            with patch("sentientagent_v2.cli.shutil.which", return_value="/usr/bin/adk"):
+            with patch("openheron.cli.shutil.which", return_value="/usr/bin/adk"):
                 with patch.object(cli, "validate_provider_runtime", return_value=None):
                     with patch.object(cli, "get_registry", return_value=fake_registry):
                         with patch.object(cli, "load_session_config", return_value=fake_session_cfg):
@@ -341,7 +341,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("issues", payload)
 
     def test_cmd_doctor_json_output_includes_provider_oauth_issue(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         fake_registry = pytypes.SimpleNamespace(workspace=Path("/tmp"), list_skills=lambda: [])
         fake_session_cfg = pytypes.SimpleNamespace(db_url="sqlite+aiosqlite:////tmp/sessions.db")
@@ -359,12 +359,12 @@ class CLITests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "SENTIENTAGENT_V2_PROVIDER": "openai_codex",
-                "SENTIENTAGENT_V2_PROVIDER_ENABLED": "1",
+                "OPENHERON_PROVIDER": "openai_codex",
+                "OPENHERON_PROVIDER_ENABLED": "1",
             },
             clear=False,
         ):
-            with patch("sentientagent_v2.cli.shutil.which", return_value="/usr/bin/adk"):
+            with patch("openheron.cli.shutil.which", return_value="/usr/bin/adk"):
                 with patch.object(cli, "validate_provider_runtime", return_value=None):
                     with patch.object(
                         cli,
@@ -389,7 +389,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["provider"]["oauth"], fake_oauth_status)
 
     def test_cmd_provider_status_json_output_includes_oauth_issue(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         fake_oauth_status = {
             "required": True,
@@ -399,8 +399,8 @@ class CLITests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "SENTIENTAGENT_V2_PROVIDER": "openai_codex",
-                "SENTIENTAGENT_V2_PROVIDER_ENABLED": "1",
+                "OPENHERON_PROVIDER": "openai_codex",
+                "OPENHERON_PROVIDER_ENABLED": "1",
             },
             clear=False,
         ):
@@ -421,7 +421,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["provider"]["oauth"], fake_oauth_status)
 
     def test_log_mcp_startup_summary(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "summarize_mcp_toolsets", return_value=[]):
             with patch.object(cli.logger, "info") as mocked_info:
@@ -440,11 +440,11 @@ class CLITests(unittest.TestCase):
         self.assertIn("MCP server filesystem", mocked_info.call_args_list[1].args[0])
 
     def test_required_mcp_preflight_fails_when_required_server_missing(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.dict(
             os.environ,
-            {"SENTIENTAGENT_V2_MCP_REQUIRED_SERVERS": "filesystem,docs"},
+            {"OPENHERON_MCP_REQUIRED_SERVERS": "filesystem,docs"},
             clear=False,
         ):
             issues = asyncio.run(cli._required_mcp_preflight([]))
@@ -452,8 +452,8 @@ class CLITests(unittest.TestCase):
         self.assertIn("missing from configured toolsets", issues[0])
 
     def test_required_mcp_preflight_fails_when_required_server_unhealthy(self) -> None:
-        from sentientagent_v2 import cli
-        from sentientagent_v2.mcp_registry import build_mcp_toolsets
+        from openheron import cli
+        from openheron.mcp_registry import build_mcp_toolsets
 
         toolsets = build_mcp_toolsets(
             {"filesystem": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]}},
@@ -472,7 +472,7 @@ class CLITests(unittest.TestCase):
         }
         with patch.dict(
             os.environ,
-            {"SENTIENTAGENT_V2_MCP_REQUIRED_SERVERS": "filesystem"},
+            {"OPENHERON_MCP_REQUIRED_SERVERS": "filesystem"},
             clear=False,
         ):
             with patch.object(cli, "probe_mcp_toolsets", new=AsyncMock(return_value=[fake_result])):
@@ -481,9 +481,9 @@ class CLITests(unittest.TestCase):
         self.assertIn("required MCP server 'filesystem' failed", issues[0])
 
     def test_cmd_gateway_exits_when_required_mcp_preflight_fails(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
-        fake_agent = pytypes.SimpleNamespace(name="sentientagent_v2", tools=[])
+        fake_agent = pytypes.SimpleNamespace(name="openheron", tools=[])
         fake_agent_module = pytypes.SimpleNamespace(root_agent=fake_agent)
 
         class _UnexpectedGateway:
@@ -495,8 +495,8 @@ class CLITests(unittest.TestCase):
         with patch.dict(
             sys.modules,
             {
-                "sentientagent_v2.agent": fake_agent_module,
-                "sentientagent_v2.gateway": fake_gateway_module,
+                "openheron.agent": fake_agent_module,
+                "openheron.gateway": fake_gateway_module,
             },
         ):
             with patch.object(cli, "parse_enabled_channels", return_value=["local"]):
@@ -518,9 +518,9 @@ class CLITests(unittest.TestCase):
         self.assertIn("[doctor] required MCP failed", messages)
 
     def test_cmd_gateway_exits_when_whatsapp_bridge_precheck_fails(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
-        fake_agent = pytypes.SimpleNamespace(name="sentientagent_v2", tools=[])
+        fake_agent = pytypes.SimpleNamespace(name="openheron", tools=[])
         fake_agent_module = pytypes.SimpleNamespace(root_agent=fake_agent)
 
         class _UnexpectedGateway:
@@ -532,8 +532,8 @@ class CLITests(unittest.TestCase):
         with patch.dict(
             sys.modules,
             {
-                "sentientagent_v2.agent": fake_agent_module,
-                "sentientagent_v2.gateway": fake_gateway_module,
+                "openheron.agent": fake_agent_module,
+                "openheron.gateway": fake_gateway_module,
             },
         ):
             with patch.object(cli, "parse_enabled_channels", return_value=["whatsapp"]):
@@ -557,14 +557,14 @@ class CLITests(unittest.TestCase):
         self.assertIn("[doctor] WhatsApp bridge precheck failed", messages)
 
     def test_cmd_onboard_creates_config_and_workspace(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(os.environ, {"HOME": tmp}, clear=False):
                 code = cli._cmd_onboard(force=False)
 
             self.assertEqual(code, 0)
-            config_path = Path(tmp) / ".sentientagent_v2" / "config.json"
+            config_path = Path(tmp) / ".openheron" / "config.json"
             self.assertTrue(config_path.exists())
             data = json.loads(config_path.read_text(encoding="utf-8"))
             workspace = Path(data["agent"]["workspace"]).expanduser()
@@ -573,11 +573,11 @@ class CLITests(unittest.TestCase):
 
     def test_script_entrypoint_accepts_m(self) -> None:
         project_root = Path(__file__).resolve().parents[1]
-        script_path = project_root / "sentientagent_v2-cli"
+        script_path = project_root / "openheron-cli"
         self.assertTrue(script_path.exists())
 
     def test_cmd_message_collects_final_text(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         fake_event_1 = pytypes.SimpleNamespace(content=pytypes.SimpleNamespace(parts=[]))
         fake_event_2 = pytypes.SimpleNamespace(
@@ -591,11 +591,11 @@ class CLITests(unittest.TestCase):
                 yield fake_event_1
                 yield fake_event_2
 
-        fake_agent = pytypes.SimpleNamespace(name="sentientagent_v2")
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
         fake_agent_module = pytypes.SimpleNamespace(root_agent=fake_agent)
 
-        with patch.dict("sys.modules", {"sentientagent_v2.agent": fake_agent_module}):
-            with patch("sentientagent_v2.cli.create_runner", return_value=(_FakeRunner(), object())):
+        with patch.dict("sys.modules", {"openheron.agent": fake_agent_module}):
+            with patch("openheron.cli.create_runner", return_value=(_FakeRunner(), object())):
                 with patch.object(cli.logger, "info") as mocked_info:
                     code = cli._cmd_message("hello", user_id="u1", session_id="s1")
 
@@ -608,7 +608,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("\n\nhello", text)
 
     def test_cmd_message_merges_stream_snapshots(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         fake_event_1 = pytypes.SimpleNamespace(
             content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="hello")])
@@ -622,11 +622,11 @@ class CLITests(unittest.TestCase):
                 yield fake_event_1
                 yield fake_event_2
 
-        fake_agent = pytypes.SimpleNamespace(name="sentientagent_v2")
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
         fake_agent_module = pytypes.SimpleNamespace(root_agent=fake_agent)
 
-        with patch.dict("sys.modules", {"sentientagent_v2.agent": fake_agent_module}):
-            with patch("sentientagent_v2.cli.create_runner", return_value=(_FakeRunner(), object())):
+        with patch.dict("sys.modules", {"openheron.agent": fake_agent_module}):
+            with patch("openheron.cli.create_runner", return_value=(_FakeRunner(), object())):
                 with patch.object(cli.logger, "info") as mocked_info:
                     code = cli._cmd_message("hello", user_id="u1", session_id="s1")
 
@@ -634,7 +634,7 @@ class CLITests(unittest.TestCase):
         mocked_info.assert_called_with("hello world")
 
     def test_cron_list_mode_dispatch(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
             with patch.object(cli, "_cmd_cron_list", return_value=0) as mocked_list:
@@ -645,7 +645,7 @@ class CLITests(unittest.TestCase):
                 mocked_bootstrap.assert_called_once()
 
     def test_cron_add_dispatch_does_not_trigger_single_turn_message(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
             with patch.object(cli, "_cmd_message", return_value=0) as mocked_message:
@@ -679,7 +679,7 @@ class CLITests(unittest.TestCase):
                     mocked_bootstrap.assert_called_once()
 
     def test_cmd_cron_add_validates_deliver_target(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli.logger, "info") as mocked_info:
             code = cli._cmd_cron_add(
@@ -697,10 +697,10 @@ class CLITests(unittest.TestCase):
         mocked_info.assert_called_with("Error: --to is required when --deliver is set")
 
     def test_cmd_cron_add_persists_job(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with tempfile.TemporaryDirectory() as tmp:
-            with patch.dict(os.environ, {"SENTIENTAGENT_V2_WORKSPACE": tmp}, clear=False):
+            with patch.dict(os.environ, {"OPENHERON_WORKSPACE": tmp}, clear=False):
                 with patch.object(cli.logger, "info") as mocked_info:
                     code = cli._cmd_cron_add(
                         name="demo",
@@ -716,14 +716,14 @@ class CLITests(unittest.TestCase):
             self.assertEqual(code, 0)
             out = mocked_info.call_args[0][0]
             self.assertIn("Added job 'demo'", out)
-            store = Path(tmp) / ".sentientagent_v2" / "cron_jobs.json"
+            store = Path(tmp) / ".openheron" / "cron_jobs.json"
             self.assertTrue(store.exists())
 
     def test_cmd_cron_run_reports_no_callback_in_plain_cli_process(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with tempfile.TemporaryDirectory() as tmp:
-            with patch.dict(os.environ, {"SENTIENTAGENT_V2_WORKSPACE": tmp}, clear=False):
+            with patch.dict(os.environ, {"OPENHERON_WORKSPACE": tmp}, clear=False):
                 add_code = cli._cmd_cron_add(
                     name="demo",
                     message="hello cron",
@@ -744,7 +744,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("no executor callback", mocked_info.call_args[0][0])
 
     def test_cmd_cron_status_prints_runtime_fields(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         fake_service = pytypes.SimpleNamespace(
             status=lambda: {
@@ -767,7 +767,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("runtime_pid=12345", line)
 
     def test_cmd_cron_list_uses_plain_stdout(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         fake_schedule = pytypes.SimpleNamespace(kind="every", every_seconds=30)
         fake_state = pytypes.SimpleNamespace(next_run_at_ms=None)
@@ -786,7 +786,7 @@ class CLITests(unittest.TestCase):
         mocked_info.assert_not_called()
 
     def test_cmd_doctor_reports_whatsapp_bridge_precheck_issue(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         fake_registry = pytypes.SimpleNamespace(workspace=Path("/tmp"), list_skills=lambda: [])
         fake_session_cfg = pytypes.SimpleNamespace(db_url="sqlite+aiosqlite:////tmp/sessions.db")
@@ -799,13 +799,13 @@ class CLITests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "SENTIENTAGENT_V2_PROVIDER": "google",
-                "SENTIENTAGENT_V2_PROVIDER_ENABLED": "1",
+                "OPENHERON_PROVIDER": "google",
+                "OPENHERON_PROVIDER_ENABLED": "1",
                 "GOOGLE_API_KEY": "k",
             },
             clear=False,
         ):
-            with patch("sentientagent_v2.cli.shutil.which", return_value="/usr/bin/adk"):
+            with patch("openheron.cli.shutil.which", return_value="/usr/bin/adk"):
                 with patch.object(cli, "validate_provider_runtime", return_value=None):
                     with patch.object(cli, "get_registry", return_value=fake_registry):
                         with patch.object(cli, "load_session_config", return_value=fake_session_cfg):
@@ -828,7 +828,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("WhatsApp bridge precheck failed", payload["issues"])
 
     def test_cmd_channels_login_rejects_unknown_channel(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli.logger, "info") as mocked_info:
             code = cli._cmd_channels_login(channel_name="telegram")
@@ -836,7 +836,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("Unsupported channel", mocked_info.call_args[0][0])
 
     def test_cmd_channels_login_starts_bridge_with_token_from_config(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         fake_cfg = {
             "channels": {
@@ -845,9 +845,9 @@ class CLITests(unittest.TestCase):
                 }
             }
         }
-        with patch.object(cli, "_get_bridge_dir", return_value=Path("/tmp/sentientagent_v2-bridge")) as mocked_bridge:
+        with patch.object(cli, "_get_bridge_dir", return_value=Path("/tmp/openheron-bridge")) as mocked_bridge:
             with patch.object(cli, "load_config", return_value=fake_cfg):
-                with patch("sentientagent_v2.cli.subprocess.run") as mocked_run:
+                with patch("openheron.cli.subprocess.run") as mocked_run:
                     code = cli._cmd_channels_login(channel_name="whatsapp")
 
         self.assertEqual(code, 0)
@@ -855,12 +855,12 @@ class CLITests(unittest.TestCase):
         mocked_run.assert_called_once()
         call_args = mocked_run.call_args
         self.assertEqual(call_args.args[0], ["npm", "start"])
-        self.assertEqual(call_args.kwargs["cwd"], Path("/tmp/sentientagent_v2-bridge"))
+        self.assertEqual(call_args.kwargs["cwd"], Path("/tmp/openheron-bridge"))
         self.assertTrue(call_args.kwargs["check"])
         self.assertEqual(call_args.kwargs["env"]["BRIDGE_TOKEN"], "bridge-token-1")
 
     def test_cmd_channels_bridge_start_persists_runtime_state(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         fake_cfg = {
             "channels": {
@@ -873,10 +873,10 @@ class CLITests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_base = Path(tmp) / "bridge-runtime"
             with patch.object(cli, "_bridge_base_dir", return_value=runtime_base):
-                with patch.object(cli, "_get_bridge_dir", return_value=Path("/tmp/sentientagent_v2-bridge")):
+                with patch.object(cli, "_get_bridge_dir", return_value=Path("/tmp/openheron-bridge")):
                     with patch.object(cli, "_is_pid_running", return_value=False):
                         with patch.object(cli, "load_config", return_value=fake_cfg):
-                            with patch("sentientagent_v2.cli.subprocess.Popen", return_value=fake_proc) as mocked_popen:
+                            with patch("openheron.cli.subprocess.Popen", return_value=fake_proc) as mocked_popen:
                                 code = cli._cmd_channels_bridge_start(channel_name="whatsapp")
 
             self.assertEqual(code, 0)
@@ -887,7 +887,7 @@ class CLITests(unittest.TestCase):
             self.assertEqual(payload["pid"], 54321)
 
     def test_cmd_channels_bridge_start_handles_bridge_dir_permission_error(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with patch.object(cli, "_get_bridge_dir", side_effect=PermissionError("no permission")):
             with patch.object(cli.logger, "info") as mocked_info:
@@ -896,7 +896,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("Failed to prepare bridge directory", mocked_info.call_args[0][0])
 
     def test_cmd_channels_bridge_status_reports_running(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with tempfile.TemporaryDirectory() as tmp:
             runtime_base = Path(tmp) / "bridge-runtime"
@@ -912,7 +912,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("Bridge is running", mocked_info.call_args[0][0])
 
     def test_cmd_channels_bridge_stop_removes_stale_state(self) -> None:
-        from sentientagent_v2 import cli
+        from openheron import cli
 
         with tempfile.TemporaryDirectory() as tmp:
             runtime_base = Path(tmp) / "bridge-runtime"

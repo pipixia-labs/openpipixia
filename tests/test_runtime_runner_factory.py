@@ -6,7 +6,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from sentientagent_v2.runtime.runner_factory import (
+from openheron.runtime.runner_factory import (
     _build_events_compaction_config,
     create_runner,
 )
@@ -21,9 +21,9 @@ class RunnerFactoryTests(unittest.TestCase):
         os.environ.update(self._env_backup)
 
     def test_build_events_compaction_config_defaults(self) -> None:
-        os.environ.pop("SENTIENTAGENT_V2_COMPACTION_ENABLED", None)
-        os.environ.pop("SENTIENTAGENT_V2_COMPACTION_INTERVAL", None)
-        os.environ.pop("SENTIENTAGENT_V2_COMPACTION_OVERLAP", None)
+        os.environ.pop("OPENHERON_COMPACTION_ENABLED", None)
+        os.environ.pop("OPENHERON_COMPACTION_INTERVAL", None)
+        os.environ.pop("OPENHERON_COMPACTION_OVERLAP", None)
 
         cfg = _build_events_compaction_config()
 
@@ -34,8 +34,8 @@ class RunnerFactoryTests(unittest.TestCase):
         self.assertIsNone(cfg.event_retention_size)
 
     def test_build_events_compaction_config_allows_token_threshold_pair(self) -> None:
-        os.environ["SENTIENTAGENT_V2_COMPACTION_TOKEN_THRESHOLD"] = "12000"
-        os.environ["SENTIENTAGENT_V2_COMPACTION_EVENT_RETENTION"] = "6"
+        os.environ["OPENHERON_COMPACTION_TOKEN_THRESHOLD"] = "12000"
+        os.environ["OPENHERON_COMPACTION_EVENT_RETENTION"] = "6"
 
         cfg = _build_events_compaction_config()
 
@@ -44,8 +44,8 @@ class RunnerFactoryTests(unittest.TestCase):
         self.assertEqual(cfg.event_retention_size, 6)
 
     def test_build_events_compaction_config_ignores_partial_token_input(self) -> None:
-        os.environ["SENTIENTAGENT_V2_COMPACTION_TOKEN_THRESHOLD"] = "12000"
-        os.environ.pop("SENTIENTAGENT_V2_COMPACTION_EVENT_RETENTION", None)
+        os.environ["OPENHERON_COMPACTION_TOKEN_THRESHOLD"] = "12000"
+        os.environ.pop("OPENHERON_COMPACTION_EVENT_RETENTION", None)
 
         cfg = _build_events_compaction_config()
 
@@ -60,12 +60,12 @@ class RunnerFactoryTests(unittest.TestCase):
         fake_agent = object()
         sentinel_app = object()
 
-        with patch("sentientagent_v2.runtime.runner_factory.create_memory_service", return_value=sentinel_memory):
-            with patch("sentientagent_v2.runtime.runner_factory.App", return_value=sentinel_app) as mocked_app:
-                with patch("sentientagent_v2.runtime.runner_factory.Runner", return_value=sentinel_runner) as mocked:
+        with patch("openheron.runtime.runner_factory.create_memory_service", return_value=sentinel_memory):
+            with patch("openheron.runtime.runner_factory.App", return_value=sentinel_app) as mocked_app:
+                with patch("openheron.runtime.runner_factory.Runner", return_value=sentinel_runner) as mocked:
                     runner, session_service = create_runner(
                         agent=fake_agent,
-                        app_name="sentientagent_v2_test",
+                        app_name="openheron_test",
                         session_service=sentinel_session_service,
                     )
 

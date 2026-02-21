@@ -1,64 +1,64 @@
-# sentientagent_v2 运行与操作指南
+# openheron 运行与操作指南
 
 ## 安装
 
 ```bash
-cd sentientagent_v2
+cd openheron
 pip install -e .
 ```
 
 ## 初始化（推荐）
 
 ```bash
-sentientagent_v2 onboard
+openheron onboard
 ```
 
 初始化后会生成：
 
-- `~/.sentientagent_v2/config.json`
-- `~/.sentientagent_v2/workspace`
+- `~/.openheron/config.json`
+- `~/.openheron/workspace`
 
 ## 运行方式
 
 ### 单轮调用
 
 ```bash
-python -m sentientagent_v2.cli -m "Describe what you can do"
+python -m openheron.cli -m "Describe what you can do"
 ```
 
 可显式指定会话标识：
 
 ```bash
-python -m sentientagent_v2.cli -m "Describe what you can do" --user-id local --session-id demo001
+python -m openheron.cli -m "Describe what you can do" --user-id local --session-id demo001
 ```
 
 ### ADK CLI 模式
 
 ```bash
-adk run sentientagent_v2
+adk run openheron
 ```
 
 ### Wrapper CLI
 
 ```bash
-sentientagent_v2 run
+openheron run
 ```
 
 ### 常用工具命令
 
 ```bash
-sentientagent_v2 skills
-sentientagent_v2 doctor
-sentientagent_v2 provider list
-sentientagent_v2 provider status
-sentientagent_v2 provider status --json
-sentientagent_v2 provider login github-copilot
-sentientagent_v2 provider login openai-codex
-sentientagent_v2 provider login codex
-sentientagent_v2 channels login
-sentientagent_v2 channels bridge start
-sentientagent_v2 channels bridge status
-sentientagent_v2 channels bridge stop
+openheron skills
+openheron doctor
+openheron provider list
+openheron provider status
+openheron provider status --json
+openheron provider login github-copilot
+openheron provider login openai-codex
+openheron provider login codex
+openheron channels login
+openheron channels bridge start
+openheron channels bridge status
+openheron channels bridge stop
 ```
 
 ## Gateway 模式
@@ -66,34 +66,34 @@ sentientagent_v2 channels bridge stop
 ### 本地通道
 
 ```bash
-python -m sentientagent_v2.cli gateway-local
+python -m openheron.cli gateway-local
 ```
 
 ### 多通道模式（含 Feishu）
 
 ```bash
-sentientagent_v2 gateway --channels local,feishu --interactive-local
+openheron gateway --channels local,feishu --interactive-local
 ```
 
 也可通过环境变量指定默认通道：
 
 ```bash
-export SENTIENTAGENT_V2_CHANNELS=feishu
-sentientagent_v2 gateway
+export OPENHERON_CHANNELS=feishu
+openheron gateway
 ```
 
 ## WhatsApp Bridge
 
-`sentientagent_v2` 使用本地 Node.js Bridge（Baileys + WebSocket）完成 WhatsApp 登录和消息收发。
+`openheron` 使用本地 Node.js Bridge（Baileys + WebSocket）完成 WhatsApp 登录和消息收发。
 
 ```bash
 # 前台扫码登录
-sentientagent_v2 channels login
+openheron channels login
 
 # 后台 bridge 生命周期
-sentientagent_v2 channels bridge start
-sentientagent_v2 channels bridge status
-sentientagent_v2 channels bridge stop
+openheron channels bridge start
+openheron channels bridge status
+openheron channels bridge stop
 ```
 
 快速自检：
@@ -105,24 +105,24 @@ scripts/whatsapp_bridge_e2e.sh smoke
 
 ## Cron 调度
 
-`sentientagent_v2` 的 cron 是进程内调度器，不写系统 crontab。只有网关运行时任务才会执行。
+`openheron` 的 cron 是进程内调度器，不写系统 crontab。只有网关运行时任务才会执行。
 
-- 存储文件：`SENTIENTAGENT_V2_WORKSPACE/.sentientagent_v2/cron_jobs.json`
+- 存储文件：`OPENHERON_WORKSPACE/.openheron/cron_jobs.json`
 - 支持调度：`every`、`cron`（可配 `tz`）、`at`
 
 常用命令：
 
 ```bash
-sentientagent_v2 cron list
-sentientagent_v2 cron add --name weather --message "check weather and summarize" --every 300
-sentientagent_v2 cron add --name daily --message "daily report" --cron "0 9 * * 1-5" --tz Asia/Shanghai
-sentientagent_v2 cron add --name reminder --message "remind me to review PR" --at 2026-02-19T09:30:00
-sentientagent_v2 cron add --name push --message "send update" --every 600 --deliver --channel feishu --to ou_xxx
-sentientagent_v2 cron run <job_id>
-sentientagent_v2 cron enable <job_id>
-sentientagent_v2 cron enable <job_id> --disable
-sentientagent_v2 cron remove <job_id>
-sentientagent_v2 cron status
+openheron cron list
+openheron cron add --name weather --message "check weather and summarize" --every 300
+openheron cron add --name daily --message "daily report" --cron "0 9 * * 1-5" --tz Asia/Shanghai
+openheron cron add --name reminder --message "remind me to review PR" --at 2026-02-19T09:30:00
+openheron cron add --name push --message "send update" --every 600 --deliver --channel feishu --to ou_xxx
+openheron cron run <job_id>
+openheron cron enable <job_id>
+openheron cron enable <job_id> --disable
+openheron cron remove <job_id>
+openheron cron status
 ```
 
 ## 测试
@@ -135,6 +135,6 @@ pytest -q
 ## 示例
 
 ```bash
-python -m sentientagent_v2.cli -m "search for the latest research progress today, and create a PPT for me."
-python -m sentientagent_v2.cli -m "download all PDF files from this page: https://bbs.kangaroo.study/forum.php?mod=viewthread&tid=467"
+python -m openheron.cli -m "search for the latest research progress today, and create a PPT for me."
+python -m openheron.cli -m "download all PDF files from this page: https://bbs.kangaroo.study/forum.php?mod=viewthread&tid=467"
 ```

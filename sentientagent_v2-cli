@@ -1,8 +1,0 @@
-#!/usr/bin/env python3
-"""Script entrypoint to support: python sentientagent_v2-cli -m '...'."""
-
-from sentientagent_v2.cli import main
-
-
-if __name__ == "__main__":
-    main()

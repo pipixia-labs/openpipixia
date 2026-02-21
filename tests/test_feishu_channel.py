@@ -8,9 +8,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from sentientagent_v2.bus.events import OutboundMessage
-from sentientagent_v2.bus.queue import MessageBus
-from sentientagent_v2.channels.feishu import FeishuChannel
+from openheron.bus.events import OutboundMessage
+from openheron.bus.queue import MessageBus
+from openheron.channels.feishu import FeishuChannel
 
 
 class FeishuChannelTests(unittest.IsolatedAsyncioTestCase):

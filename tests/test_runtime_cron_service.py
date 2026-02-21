@@ -10,7 +10,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sentientagent_v2.runtime.cron_service import CronSchedule, CronService, _compute_next_run
+from openheron.runtime.cron_service import CronSchedule, CronService, _compute_next_run
 
 
 class _FakeClock:

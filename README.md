@@ -1,6 +1,6 @@
-# sentientagent_v2
+# openheron
 
-`sentientagent_v2` is a lightweight, skills-first agent runtime built on Google ADK.
+`openheron` is a lightweight, skills-first agent runtime built on Google ADK.
 
 It focuses on:
 
@@ -14,24 +14,24 @@ Compared with larger systems, this project keeps the core runtime compact and ea
 ## Quick Start
 
 ```bash
-cd sentientagent_v2_root
+cd openheron
 pip install -e .
-sentientagent_v2 onboard
-python -m sentientagent_v2.cli -m "Describe what you can do"
+openheron onboard
+python -m openheron.cli -m "Describe what you can do"
 ```
 
 ## Common Commands
 
 ```bash
 # local gateway
-python -m sentientagent_v2.cli gateway-local
+python -m openheron.cli gateway-local
 
 # multi-channel gateway
-sentientagent_v2 gateway --channels local,feishu --interactive-local
+openheron gateway --channels local,feishu --interactive-local
 
 # diagnostics
-sentientagent_v2 doctor
-sentientagent_v2 skills
+openheron doctor
+openheron skills
 ```
 
 ## Core Capabilities
@@ -46,10 +46,10 @@ sentientagent_v2 skills
 ## Project Layout
 
 ```text
-sentientagent_v2_root/
+openheron/
 ├── README.md
 ├── docs/
-├── sentientagent_v2/
+├── openheron/
 ├── tests/
 └── scripts/
 ```
@@ -70,7 +70,3 @@ Detailed docs are in [`docs/`](./docs/):
 source .venv/bin/activate
 pytest -q
 ```
-
-## Acknowledgements
-
-This project is inspired by and partially adapted from [nanobot](https://github.com/HKUDS/nanobot).

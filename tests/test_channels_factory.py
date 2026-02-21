@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 import unittest
 
-from sentientagent_v2.bus.queue import MessageBus
-from sentientagent_v2.channels.factory import (
+from openheron.bus.queue import MessageBus
+from openheron.channels.factory import (
     build_channel_manager,
     parse_enabled_channels,
     validate_channel_setup,

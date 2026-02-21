@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import unittest
 
-from sentientagent_v2.bus.events import OutboundMessage
-from sentientagent_v2.bus.queue import MessageBus
-from sentientagent_v2.channels.base import BaseChannel
-from sentientagent_v2.channels.manager import ChannelManager
+from openheron.bus.events import OutboundMessage
+from openheron.bus.queue import MessageBus
+from openheron.channels.base import BaseChannel
+from openheron.channels.manager import ChannelManager
 
 
 class _FlakyChannel(BaseChannel):

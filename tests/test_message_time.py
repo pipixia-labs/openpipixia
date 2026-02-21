@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sentientagent_v2.runtime.message_time import (
+from openheron.runtime.message_time import (
     append_execution_time,
     build_current_time_line,
     inject_request_time,

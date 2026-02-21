@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from sentientagent_v2.runtime.cron_schedule_parser import parse_schedule_input
+from openheron.runtime.cron_schedule_parser import parse_schedule_input
 
 
 class CronScheduleParserTests(unittest.TestCase):
