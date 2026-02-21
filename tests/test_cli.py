@@ -57,6 +57,28 @@ class CLITests(unittest.TestCase):
                 self.assertEqual(ctx.exception.code, 0)
                 mocked_doctor.assert_called_once_with(output_json=True, verbose=True)
 
+    def test_mcps_mode_dispatch(self) -> None:
+        from openheron import cli
+
+        with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
+            with patch.object(cli, "_cmd_mcps", return_value=0) as mocked_mcps:
+                with self.assertRaises(SystemExit) as ctx:
+                    cli.main(["mcps"])
+                self.assertEqual(ctx.exception.code, 0)
+                mocked_bootstrap.assert_called_once()
+                mocked_mcps.assert_called_once_with()
+
+    def test_spawn_mode_dispatch(self) -> None:
+        from openheron import cli
+
+        with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
+            with patch.object(cli, "_cmd_spawn", return_value=0) as mocked_spawn:
+                with self.assertRaises(SystemExit) as ctx:
+                    cli.main(["spawn"])
+                self.assertEqual(ctx.exception.code, 0)
+                mocked_bootstrap.assert_called_once()
+                mocked_spawn.assert_called_once_with()
+
     def test_provider_login_mode_dispatch(self) -> None:
         from openheron import cli
 
@@ -438,6 +460,81 @@ class CLITests(unittest.TestCase):
         self.assertEqual(mocked_info.call_count, 2)
         self.assertEqual(mocked_info.call_args_list[0].args[0], "MCP toolsets: 1 server(s) configured")
         self.assertIn("MCP server filesystem", mocked_info.call_args_list[1].args[0])
+
+    def test_cmd_mcps_lists_connected_servers_and_api_names(self) -> None:
+        from openheron import cli
+
+        fake_toolset_ok = pytypes.SimpleNamespace(meta=pytypes.SimpleNamespace(name="filesystem"))
+        fake_toolset_bad = pytypes.SimpleNamespace(meta=pytypes.SimpleNamespace(name="bad_remote"))
+        fake_results = [
+            {"name": "filesystem", "transport": "stdio", "status": "ok"},
+            {"name": "bad_remote", "transport": "http", "status": "error"},
+        ]
+
+        with patch.object(cli, "build_mcp_toolsets_from_env", return_value=[fake_toolset_ok, fake_toolset_bad]):
+            with patch.object(cli, "probe_mcp_toolsets", new=AsyncMock(return_value=fake_results)):
+                with patch.object(
+                    cli,
+                    "_collect_connected_mcp_apis",
+                    new=AsyncMock(return_value={"filesystem": ["read_file", "write_file"]}),
+                ):
+                    with patch.object(cli.logger, "info") as mocked_info:
+                        code = cli._cmd_mcps()
+
+        self.assertEqual(code, 0)
+        info_text = "\n".join(call.args[0] for call in mocked_info.call_args_list if call.args)
+        self.assertIn("Connected MCP servers: 1", info_text)
+        self.assertIn("filesystem (stdio)", info_text)
+        self.assertIn("read_file, write_file", info_text)
+        self.assertNotIn("bad_remote (http)", info_text)
+
+    def test_cmd_spawn_lists_recent_subagent_records(self) -> None:
+        from openheron import cli
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = Path(tmp) / ".openheron"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = log_dir / "subagents.log"
+            log_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "timestamp": "2026-02-21T10:00:00",
+                                "status": "pending",
+                                "task_id": "subagent-111",
+                                "prompt_preview": "first",
+                                "channel": "feishu",
+                                "chat_id": "oc_1",
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": "2026-02-21T10:01:00",
+                                "status": "pending",
+                                "task_id": "subagent-222",
+                                "prompt_preview": "second",
+                                "channel": "local",
+                                "chat_id": "terminal",
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            fake_policy = pytypes.SimpleNamespace(workspace_root=Path(tmp))
+            with patch.object(cli, "load_security_policy", return_value=fake_policy):
+                with patch.object(cli.logger, "info") as mocked_info:
+                    code = cli._cmd_spawn()
+
+        self.assertEqual(code, 0)
+        info_text = "\n".join(call.args[0] for call in mocked_info.call_args_list if call.args)
+        self.assertIn("Subagents: 2 recent task(s)", info_text)
+        self.assertIn("subagent-222", info_text)
+        self.assertIn("subagent-111", info_text)
+        self.assertIn("prompt: second", info_text)
 
     def test_required_mcp_preflight_fails_when_required_server_missing(self) -> None:
         from openheron import cli

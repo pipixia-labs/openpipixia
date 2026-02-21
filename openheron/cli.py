@@ -140,6 +140,134 @@ def _cmd_skills() -> int:
     return 0
 
 
+async def _collect_connected_mcp_apis(
+    toolsets: list[ManagedMcpToolset],
+    *,
+    timeout_seconds: float,
+) -> dict[str, list[str]]:
+    """Fetch tool/API names for already-connected MCP toolsets."""
+
+    async def _collect_one(toolset: ManagedMcpToolset) -> tuple[str, list[str]]:
+        names: set[str] = set()
+        try:
+            tools = await asyncio.wait_for(
+                ManagedMcpToolset.get_tools(toolset),
+                timeout=max(1.0, float(timeout_seconds)),
+            )
+        except Exception:
+            return toolset.meta.name, []
+        for tool in tools:
+            name = str(getattr(tool, "name", "") or "").strip()
+            if name:
+                names.add(name)
+        return toolset.meta.name, sorted(names)
+
+    pairs = await asyncio.gather(*[_collect_one(toolset) for toolset in toolsets])
+    return {name: api_names for name, api_names in pairs}
+
+
+def _cmd_mcps() -> int:
+    """List connected MCP servers and available APIs for each server."""
+    toolsets = build_mcp_toolsets_from_env(log_registered=False)
+    if not toolsets:
+        logger.info("MCP: no servers configured")
+        return 0
+
+    probe_policy = _load_mcp_probe_policy(
+        timeout_env_name="OPENHERON_MCP_LIST_TIMEOUT_SECONDS",
+        timeout_default=5.0,
+    )
+    try:
+        results = asyncio.run(
+            probe_mcp_toolsets(
+                toolsets,
+                timeout_seconds=probe_policy.timeout_seconds,
+                retry_attempts=probe_policy.retry_attempts,
+                retry_backoff_seconds=probe_policy.retry_backoff_seconds,
+            )
+        )
+    except Exception as exc:
+        logger.info(f"MCP probe failed: {exc}")
+        return 1
+
+    toolsets_by_name = {toolset.meta.name: toolset for toolset in toolsets}
+    connected_names = [str(item.get("name", "")) for item in results if str(item.get("status")) == "ok"]
+    if not connected_names:
+        logger.info("MCP: no connected servers")
+        return 0
+
+    connected_toolsets = [toolsets_by_name[name] for name in connected_names if name in toolsets_by_name]
+    api_names_by_server = asyncio.run(
+        _collect_connected_mcp_apis(
+            connected_toolsets,
+            timeout_seconds=probe_policy.timeout_seconds,
+        )
+    )
+
+    logger.info(f"Connected MCP servers: {len(connected_toolsets)}")
+    for item in results:
+        if str(item.get("status")) != "ok":
+            continue
+        server_name = str(item.get("name", "unknown"))
+        transport = str(item.get("transport", "unknown"))
+        api_names = api_names_by_server.get(server_name, [])
+        logger.info(f"- {server_name} ({transport})")
+        if api_names:
+            logger.info(f"  APIs ({len(api_names)}): {', '.join(api_names)}")
+        else:
+            logger.info("  APIs (0): (none)")
+    return 0
+
+
+def _subagent_log_path() -> Path:
+    """Return JSONL log path that records accepted `spawn_subagent` tasks."""
+    return load_security_policy().workspace_root / ".openheron" / "subagents.log"
+
+
+def _read_subagent_records(*, limit: int = 50) -> list[dict[str, Any]]:
+    """Read sub-agent spawn records from local JSONL log (newest first)."""
+    log_path = _subagent_log_path()
+    if not log_path.exists():
+        return []
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    records: list[dict[str, Any]] = []
+    for raw_line in reversed(lines):
+        if not raw_line.strip():
+            continue
+        try:
+            payload = json.loads(raw_line)
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            records.append(payload)
+        if len(records) >= max(1, int(limit)):
+            break
+    return records
+
+
+def _cmd_spawn() -> int:
+    """List sub-agent tasks created by `spawn_subagent`."""
+    records = _read_subagent_records(limit=50)
+    if not records:
+        logger.info("Subagents: none")
+        return 0
+
+    logger.info(f"Subagents: {len(records)} recent task(s)")
+    for item in records:
+        task_id = str(item.get("task_id", "unknown"))
+        status = str(item.get("status", "unknown"))
+        channel = str(item.get("channel", "unknown"))
+        chat_id = str(item.get("chat_id", "unknown"))
+        created_at = str(item.get("timestamp", ""))
+        prompt_preview = str(item.get("prompt_preview", "")).strip()
+        logger.info(
+            f"- {task_id} status={status} target={channel}:{chat_id} created_at={created_at}"
+        )
+        if prompt_preview:
+            logger.info(f"  prompt: {prompt_preview}")
+    return 0
+
+
 def _check_openai_codex_oauth() -> tuple[bool, str]:
     """Check whether OpenAI Codex OAuth token is locally available."""
     try:
@@ -1413,6 +1541,8 @@ def main(argv: list[str] | None = None) -> None:
         help="Overwrite existing config with defaults.",
     )
     subparsers.add_parser("skills", help="List discovered skills as JSON.")
+    subparsers.add_parser("mcps", help="List connected MCP servers and their available APIs.")
+    subparsers.add_parser("spawn", help="List recent sub-agent tasks created by spawn_subagent.")
     doctor_parser = subparsers.add_parser("doctor", help="Check local runtime prerequisites.")
     doctor_parser.add_argument(
         "--json",
@@ -1550,6 +1680,8 @@ def main(argv: list[str] | None = None) -> None:
         handlers: dict[str, Callable[[], int]] = {
             "onboard": lambda: _cmd_onboard(force=args.force),
             "skills": _cmd_skills,
+            "mcps": _cmd_mcps,
+            "spawn": _cmd_spawn,
             "doctor": lambda: _cmd_doctor(output_json=args.output_json, verbose=args.verbose),
             "run": lambda: _cmd_run(args.adk_args),
             "gateway-local": lambda: _cmd_gateway_local(sender_id=args.sender_id, chat_id=args.chat_id),

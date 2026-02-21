@@ -539,6 +539,21 @@ def _append_outbox_record(record: dict[str, Any]) -> Path:
     return outbox
 
 
+def _append_subagent_record(record: dict[str, Any]) -> Path:
+    """Append one sub-agent spawn record to local JSONL log.
+
+    The record is written only when ``spawn_subagent`` successfully dispatches
+    the task. The log is used by CLI introspection (`openheron spawn`).
+    """
+    log_path = _workspace() / ".openheron" / "subagents.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    ts = dt.datetime.now().isoformat(timespec="seconds")
+    line = json.dumps({"timestamp": ts, **record}, ensure_ascii=False)
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(line + "\n")
+    return log_path
+
+
 def message(content: str, channel: str | None = None, chat_id: str | None = None) -> str:
     """Send an outbound text message to a channel target.
 
@@ -661,6 +676,26 @@ def spawn_subagent(
         result = {"status": "error", "error": f"failed to dispatch subagent task: {exc}"}
         _debug("tool.spawn_subagent.output", result)
         return result
+
+    # Persist an accepted task ticket for CLI introspection and auditability.
+    try:
+        _append_subagent_record(
+            {
+                "status": "pending",
+                "task_id": task_id,
+                "prompt_preview": prompt.strip()[:200],
+                "prompt_chars": len(prompt),
+                "notify_on_complete": bool(notify_on_complete),
+                "channel": target_channel,
+                "chat_id": target_chat_id,
+                "user_id": user_id,
+                "session_id": session_id,
+                "invocation_id": invocation_id,
+                "function_call_id": function_call_id,
+            }
+        )
+    except Exception as exc:
+        _debug("tool.spawn_subagent.record_error", {"task_id": task_id, "error": str(exc)})
 
     result = {
         "status": "pending",

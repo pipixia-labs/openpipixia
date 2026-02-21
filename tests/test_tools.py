@@ -197,6 +197,32 @@ class ToolsTests(unittest.TestCase):
         self.assertEqual(req.chat_id, "oc_123")
         self.assertTrue(req.notify_on_complete)
 
+    def test_spawn_subagent_persists_spawn_record(self) -> None:
+        captured: list[SubagentSpawnRequest] = []
+        configure_subagent_dispatcher(captured.append)
+        ctx = pytypes.SimpleNamespace(
+            user_id="u1",
+            invocation_id="inv-1",
+            function_call_id="fc-1",
+            session=pytypes.SimpleNamespace(id="s1"),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["OPENHERON_WORKSPACE"] = tmp
+            with route_context("feishu", "oc_123"):
+                out = spawn_subagent(prompt="summarize logs", tool_context=ctx)
+
+            self.assertEqual(out.get("status"), "pending")
+            log_path = Path(tmp) / ".openheron" / "subagents.log"
+            self.assertTrue(log_path.exists())
+            record = json.loads(log_path.read_text(encoding="utf-8").splitlines()[-1])
+            self.assertEqual(record["status"], "pending")
+            self.assertTrue(str(record["task_id"]).startswith("subagent-"))
+            self.assertEqual(record["channel"], "feishu")
+            self.assertEqual(record["chat_id"], "oc_123")
+            self.assertEqual(record["user_id"], "u1")
+            self.assertEqual(record["session_id"], "s1")
+
 
 if __name__ == "__main__":
     unittest.main()
