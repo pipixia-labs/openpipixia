@@ -591,7 +591,7 @@ class ToolsTests(unittest.TestCase):
             browser(
                 action="act",
                 target_id=target_id,
-                request={"kind": "type", "ref": "e2", "text": "hello"},
+                request=json.dumps({"kind": "type", "ref": "e2", "text": "hello"}),
             )
         )
         self.assertTrue(acted["ok"])
@@ -601,11 +601,15 @@ class ToolsTests(unittest.TestCase):
             browser(
                 action="act",
                 target_id=target_id,
-                request={"kind": "click", "selector": "button.primary"},
+                request=json.dumps({"kind": "click", "selector": "button.primary"}),
             )
         )
         self.assertTrue(acted_with_selector["ok"])
         self.assertEqual(acted_with_selector["kind"], "click")
+
+        invalid_request = json.loads(browser(action="act", request="{not-json"))
+        self.assertFalse(invalid_request["ok"])
+        self.assertIn("valid JSON object string", invalid_request["error"])
 
     def test_browser_tool_reports_errors_for_missing_inputs(self) -> None:
         missing_url = json.loads(browser(action="open"))

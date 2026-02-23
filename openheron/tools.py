@@ -985,7 +985,7 @@ def browser(
     profile: str | None = None,
     target: str | None = None,
     snapshot_format: str = "ai",
-    request: dict[str, Any] | None = None,
+    request: str | None = None,
     paths: list[str] | None = None,
     ref: str | None = None,
     accept: bool | None = None,
@@ -1003,7 +1003,8 @@ def browser(
         profile: Optional browser profile name (reserved for multi-profile iterations).
         target: Reserved execution target field for future host/sandbox/node routing.
         snapshot_format: Snapshot format for ``action="snapshot"`` (``ai`` or ``aria``).
-        request: Action payload used by ``action="act"``.
+        request: Action payload used by ``action="act"``. Pass a JSON object
+            string (for model tool-call compatibility).
         paths: Optional upload file paths for ``action="upload"``.
         ref: Optional selector/ref for ``action="upload"``.
         accept: Required bool for ``action="dialog"``.
@@ -1047,6 +1048,29 @@ def browser(
     if (target or "").strip():
         # Iteration 1 keeps the shape for future host/sandbox/node routing.
         query["target"] = target.strip()
+
+    act_request: dict[str, Any] | None
+    if isinstance(request, str):
+        raw_request = request.strip()
+        if raw_request:
+            try:
+                parsed_request = json.loads(raw_request)
+            except json.JSONDecodeError:
+                return _ret(
+                    "tool.browser.output",
+                    _json({"ok": False, "error": "request must be a valid JSON object string", "status": 400}),
+                )
+            if not isinstance(parsed_request, dict):
+                return _ret(
+                    "tool.browser.output",
+                    _json({"ok": False, "error": "request must decode to a JSON object", "status": 400}),
+                )
+            act_request = parsed_request
+        else:
+            act_request = None
+    else:
+        # Backward-compatibility for direct Python calls in tests/integration.
+        act_request = request if isinstance(request, dict) else None
 
     request_map: dict[str, BrowserDispatchRequest] = {
         "status": BrowserDispatchRequest(method="GET", path="/", query=query),
@@ -1114,7 +1138,7 @@ def browser(
             query=query,
             body={
                 "targetId": (target_id or "").strip() or None,
-                "request": request,
+                "request": act_request,
             },
         ),
     }
