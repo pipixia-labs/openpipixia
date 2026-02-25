@@ -2032,36 +2032,43 @@ INSTALL_CHANNEL_PROMPT_RULES: dict[str, tuple[InstallChannelPromptRule, ...]] = 
 }
 
 
+def _build_install_channel_summary_requirements() -> tuple[InstallChannelSummaryRequirement, ...]:
+    """Build install summary requirements from shared channel env-backfill mappings."""
+
+    requirements: list[InstallChannelSummaryRequirement] = []
+    email_consent_added = False
+    for channel, key, _env_name in CHANNEL_ENV_BACKFILL_MAPPINGS:
+        if channel == "email" and not email_consent_added:
+            requirements.append(
+                InstallChannelSummaryRequirement(
+                    channel="email",
+                    key="consentGranted",
+                    presence="truthy_bool",
+                    fix_hint_template="set channels.email.consentGranted=true in {config_path}",
+                )
+            )
+            email_consent_added = True
+        fix_hint_template = (
+            "set {item} in {config_path} (Feishu credentials)"
+            if channel == "feishu"
+            else "set {item} in {config_path}"
+        )
+        presence: Literal["truthy_bool", "non_empty_strip", "non_empty_raw"] = "non_empty_strip"
+        if channel == "email" and key == "smtpPassword":
+            presence = "non_empty_raw"
+        requirements.append(
+            InstallChannelSummaryRequirement(
+                channel=channel,
+                key=key,
+                presence=presence,
+                fix_hint_template=fix_hint_template,
+            )
+        )
+    return tuple(requirements)
+
+
 INSTALL_CHANNEL_SUMMARY_REQUIREMENTS: tuple[InstallChannelSummaryRequirement, ...] = (
-    InstallChannelSummaryRequirement(
-        channel="feishu",
-        key="appId",
-        fix_hint_template="set {item} in {config_path} (Feishu credentials)",
-    ),
-    InstallChannelSummaryRequirement(
-        channel="feishu",
-        key="appSecret",
-        fix_hint_template="set {item} in {config_path} (Feishu credentials)",
-    ),
-    InstallChannelSummaryRequirement(channel="telegram", key="token"),
-    InstallChannelSummaryRequirement(channel="discord", key="token"),
-    InstallChannelSummaryRequirement(channel="dingtalk", key="clientId"),
-    InstallChannelSummaryRequirement(channel="dingtalk", key="clientSecret"),
-    InstallChannelSummaryRequirement(channel="slack", key="botToken"),
-    InstallChannelSummaryRequirement(channel="whatsapp", key="bridgeUrl"),
-    InstallChannelSummaryRequirement(channel="mochat", key="baseUrl"),
-    InstallChannelSummaryRequirement(channel="mochat", key="clawToken"),
-    InstallChannelSummaryRequirement(
-        channel="email",
-        key="consentGranted",
-        presence="truthy_bool",
-        fix_hint_template="set channels.email.consentGranted=true in {config_path}",
-    ),
-    InstallChannelSummaryRequirement(channel="email", key="smtpHost"),
-    InstallChannelSummaryRequirement(channel="email", key="smtpUsername"),
-    InstallChannelSummaryRequirement(channel="email", key="smtpPassword", presence="non_empty_raw"),
-    InstallChannelSummaryRequirement(channel="qq", key="appId"),
-    InstallChannelSummaryRequirement(channel="qq", key="secret"),
+    _build_install_channel_summary_requirements()
 )
 
 
