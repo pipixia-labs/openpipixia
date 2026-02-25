@@ -21,6 +21,7 @@ from openheron.tools import (
     SubagentSpawnRequest,
     browser,
     configure_browser_runtime,
+    configure_heartbeat_waker,
     configure_subagent_dispatcher,
     cron,
     edit_file,
@@ -44,6 +45,7 @@ class ToolsTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         configure_browser_runtime(None)
+        configure_heartbeat_waker(None)
         configure_subagent_dispatcher(None)
         os.environ.clear()
         os.environ.update(self._env_backup)
@@ -116,6 +118,37 @@ class ToolsTests(unittest.TestCase):
     def test_exec_tool(self) -> None:
         result = exec_command("echo hello")
         self.assertIn("hello", result)
+
+    def test_exec_tool_requests_heartbeat_wake(self) -> None:
+        reasons: list[str] = []
+        configure_heartbeat_waker(reasons.append)
+
+        result = exec_command("echo hello")
+        self.assertIn("hello", result)
+        self.assertIn("exec:foreground", reasons)
+
+    def test_process_actions_request_heartbeat_wake(self) -> None:
+        class _DummyManager:
+            def write_session(self, session_id, data, *, eof, scope_key):
+                return None
+
+            def kill_session(self, session_id, *, scope_key):
+                return None
+
+        reasons: list[str] = []
+        configure_heartbeat_waker(reasons.append)
+        with patch("openheron.tools.get_process_session_manager", return_value=_DummyManager()):
+            process_session("write", session_id="s1", data="abc")
+            process_session("send-keys", session_id="s1", literal="x")
+            process_session("submit", session_id="s1")
+            process_session("paste", session_id="s1", data="paste")
+            process_session("kill", session_id="s1")
+
+        self.assertIn("exec:write", reasons)
+        self.assertIn("exec:send-keys", reasons)
+        self.assertIn("exec:submit", reasons)
+        self.assertIn("exec:paste", reasons)
+        self.assertIn("exec:kill", reasons)
 
     def test_exec_background_then_poll_and_remove(self) -> None:
         cmd = (
@@ -840,6 +873,30 @@ class ToolsTests(unittest.TestCase):
         self.assertFalse(not_running["ok"])
         self.assertIn("not running", not_running["error"])
         self.assertEqual(not_running["status"], 409)
+
+    def test_browser_upload_requests_heartbeat_wake_on_success(self) -> None:
+        class _DummyService:
+            def dispatch(self, _request):
+                return BrowserDispatchResponse(200, {"ok": True})
+
+        reasons: list[str] = []
+        configure_heartbeat_waker(reasons.append)
+        with patch("openheron.tools.get_browser_control_service", return_value=_DummyService()):
+            payload = json.loads(browser(action="upload", paths=["tmp/a.txt"]))
+        self.assertTrue(payload["ok"])
+        self.assertIn("hook:upload", reasons)
+
+    def test_browser_dialog_requests_heartbeat_wake_on_success(self) -> None:
+        class _DummyService:
+            def dispatch(self, _request):
+                return BrowserDispatchResponse(200, {"ok": True})
+
+        reasons: list[str] = []
+        configure_heartbeat_waker(reasons.append)
+        with patch("openheron.tools.get_browser_control_service", return_value=_DummyService()):
+            payload = json.loads(browser(action="dialog", accept=True))
+        self.assertTrue(payload["ok"])
+        self.assertIn("hook:dialog", reasons)
 
     def test_browser_tool_supports_profiles_and_stop(self) -> None:
         profiles = json.loads(browser(action="profiles"))

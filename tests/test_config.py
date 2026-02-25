@@ -41,6 +41,16 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(cfg["providers"]["google"]["enabled"])
         self.assertTrue(cfg["web"]["search"]["enabled"])
         self.assertEqual(cfg["session"]["dbUrl"], "")
+        self.assertEqual(cfg["agent"]["heartbeat"]["every"], "30m")
+        self.assertEqual(cfg["agent"]["heartbeat"]["ackMaxChars"], 300)
+        self.assertFalse(cfg["agent"]["heartbeat"]["showOk"])
+        self.assertTrue(cfg["agent"]["heartbeat"]["showAlerts"])
+        self.assertEqual(cfg["agent"]["heartbeat"]["target"], "last")
+        self.assertEqual(cfg["agent"]["heartbeat"]["targetChannel"], "")
+        self.assertEqual(cfg["agent"]["heartbeat"]["targetChatId"], "")
+        self.assertEqual(cfg["agent"]["heartbeat"]["activeHours"]["start"], "")
+        self.assertEqual(cfg["agent"]["heartbeat"]["activeHours"]["end"], "")
+        self.assertEqual(cfg["agent"]["heartbeat"]["activeHours"]["timezone"], "user")
         self.assertFalse(cfg["security"]["restrictToWorkspace"])
         self.assertTrue(cfg["security"]["allowExec"])
         self.assertTrue(cfg["security"]["allowNetwork"])
@@ -137,6 +147,17 @@ class ConfigTests(unittest.TestCase):
             cfg["channels"]["qq"]["secret"] = "qq-secret"
             cfg["channels"]["qq"]["allowFrom"] = ["qq_u1", "qq_u2"]
             cfg["session"]["dbUrl"] = "sqlite+aiosqlite:////tmp/sessions.db"
+            cfg["agent"]["heartbeat"]["every"] = "15m"
+            cfg["agent"]["heartbeat"]["prompt"] = "ops check"
+            cfg["agent"]["heartbeat"]["ackMaxChars"] = 120
+            cfg["agent"]["heartbeat"]["showOk"] = True
+            cfg["agent"]["heartbeat"]["showAlerts"] = False
+            cfg["agent"]["heartbeat"]["target"] = "channel"
+            cfg["agent"]["heartbeat"]["targetChannel"] = "feishu"
+            cfg["agent"]["heartbeat"]["targetChatId"] = "ops-room"
+            cfg["agent"]["heartbeat"]["activeHours"]["start"] = "09:00"
+            cfg["agent"]["heartbeat"]["activeHours"]["end"] = "18:00"
+            cfg["agent"]["heartbeat"]["activeHours"]["timezone"] = "UTC"
             cfg["providers"]["google"]["apiKey"] = "google-key"
             cfg["web"]["search"]["enabled"] = False
             cfg["security"]["restrictToWorkspace"] = True
@@ -146,6 +167,17 @@ class ConfigTests(unittest.TestCase):
             save_config(cfg, path)
 
             os.environ.pop("OPENHERON_CHANNELS", None)
+            os.environ.pop("OPENHERON_HEARTBEAT_EVERY", None)
+            os.environ.pop("OPENHERON_HEARTBEAT_PROMPT", None)
+            os.environ.pop("OPENHERON_HEARTBEAT_ACK_MAX_CHARS", None)
+            os.environ.pop("OPENHERON_HEARTBEAT_SHOW_OK", None)
+            os.environ.pop("OPENHERON_HEARTBEAT_SHOW_ALERTS", None)
+            os.environ.pop("OPENHERON_HEARTBEAT_TARGET", None)
+            os.environ.pop("OPENHERON_HEARTBEAT_TARGET_CHANNEL", None)
+            os.environ.pop("OPENHERON_HEARTBEAT_TARGET_CHAT_ID", None)
+            os.environ.pop("OPENHERON_HEARTBEAT_ACTIVE_HOURS_START", None)
+            os.environ.pop("OPENHERON_HEARTBEAT_ACTIVE_HOURS_END", None)
+            os.environ.pop("OPENHERON_HEARTBEAT_ACTIVE_HOURS_TIMEZONE", None)
             os.environ.pop("FEISHU_APP_ID", None)
             os.environ.pop("FEISHU_ALLOW_FROM", None)
             os.environ.pop("TELEGRAM_BOT_TOKEN", None)
@@ -197,6 +229,17 @@ class ConfigTests(unittest.TestCase):
 
         self.assertIsNotNone(loaded)
         self.assertEqual(os.environ["OPENHERON_CHANNELS"], "feishu,telegram,whatsapp,discord,mochat,dingtalk,email,slack,qq")
+        self.assertEqual(os.environ["OPENHERON_HEARTBEAT_EVERY"], "15m")
+        self.assertEqual(os.environ["OPENHERON_HEARTBEAT_PROMPT"], "ops check")
+        self.assertEqual(os.environ["OPENHERON_HEARTBEAT_ACK_MAX_CHARS"], "120")
+        self.assertEqual(os.environ["OPENHERON_HEARTBEAT_SHOW_OK"], "1")
+        self.assertEqual(os.environ["OPENHERON_HEARTBEAT_SHOW_ALERTS"], "0")
+        self.assertEqual(os.environ["OPENHERON_HEARTBEAT_TARGET"], "channel")
+        self.assertEqual(os.environ["OPENHERON_HEARTBEAT_TARGET_CHANNEL"], "feishu")
+        self.assertEqual(os.environ["OPENHERON_HEARTBEAT_TARGET_CHAT_ID"], "ops-room")
+        self.assertEqual(os.environ["OPENHERON_HEARTBEAT_ACTIVE_HOURS_START"], "09:00")
+        self.assertEqual(os.environ["OPENHERON_HEARTBEAT_ACTIVE_HOURS_END"], "18:00")
+        self.assertEqual(os.environ["OPENHERON_HEARTBEAT_ACTIVE_HOURS_TIMEZONE"], "UTC")
         self.assertEqual(os.environ["FEISHU_APP_ID"], "app-id")
         self.assertEqual(os.environ["FEISHU_ALLOW_FROM"], "ou_1,ou_2")
         self.assertEqual(os.environ["TELEGRAM_BOT_TOKEN"], "tg-token")
@@ -257,6 +300,12 @@ class ConfigTests(unittest.TestCase):
         self.assertIsNone(loaded)
         self.assertEqual(os.environ["OPENHERON_PROVIDER"], "openai")
         self.assertEqual(os.environ["OPENHERON_MEMORY_BACKEND"], "in_memory")
+
+    def test_apply_config_to_env_clamps_invalid_heartbeat_ack_max_chars(self) -> None:
+        cfg = default_config()
+        cfg["agent"]["heartbeat"]["ackMaxChars"] = -99
+        apply_config_to_env(cfg, overwrite=True)
+        self.assertEqual(os.environ["OPENHERON_HEARTBEAT_ACK_MAX_CHARS"], "0")
 
     def test_bootstrap_env_supports_env_override_map_for_runtime_knobs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

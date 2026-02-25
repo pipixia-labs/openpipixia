@@ -41,6 +41,7 @@ from .security import PathGuard, SecurityPolicy, load_security_policy
 
 _OUTBOUND_PUBLISHER: Callable[[OutboundMessage], Awaitable[None]] | None = None
 _SUBAGENT_DISPATCHER: Callable[["SubagentSpawnRequest"], None] | None = None
+_HEARTBEAT_WAKE_REQUESTER: Callable[[str], None] | None = None
 
 
 @dataclass(slots=True)
@@ -740,6 +741,7 @@ def exec_command(
             return _ret("tool.exec.output", f"Error executing command: {exc}")
 
         result = _format_exec_output(completed.stdout, completed.stderr, completed.returncode)
+        _request_heartbeat_wake("exec:foreground")
         _debug("tool.exec.output", {"chars": len(result), "preview": result[:240]})
         return result
 
@@ -760,6 +762,7 @@ def exec_command(
     yield_window = 0 if background else max(10, min(120_000, int(yield_ms or 10_000)))
     if yield_window == 0:
         manager.mark_backgrounded(session.session_id, scope_key=effective_scope)
+        _request_heartbeat_wake("exec:background")
         warning_text = "\n".join(warnings)
         result = (
             f"{warning_text}\n\n".lstrip()
@@ -779,10 +782,12 @@ def exec_command(
             polled.get("exit_code") if isinstance(polled.get("exit_code"), int) else None,
         )
         manager.remove_session(session.session_id)
+        _request_heartbeat_wake("exec:foreground")
         _debug("tool.exec.output", {"chars": len(result), "preview": result[:240]})
         return result
 
     manager.mark_backgrounded(session.session_id, scope_key=effective_scope)
+    _request_heartbeat_wake("exec:background")
     warning_text = "\n".join(warnings)
     running = (
         f"{warning_text}\n\n".lstrip()
@@ -923,6 +928,7 @@ def process_session(
         err = manager.write_session(sid, data, eof=eof, scope_key=effective_scope)
         if err:
             return _ret("tool.process.output", f"Error: {err}")
+        _request_heartbeat_wake("exec:write")
         suffix = " (stdin closed)" if eof else ""
         return _ret("tool.process.output", f"Wrote {len(data)} bytes to session {sid}{suffix}.")
 
@@ -936,6 +942,7 @@ def process_session(
         err = manager.write_session(sid, payload, eof=eof, scope_key=effective_scope)
         if err:
             return _ret("tool.process.output", f"Error: {err}")
+        _request_heartbeat_wake("exec:send-keys")
         warning_text = f"\nWarnings:\n- " + "\n- ".join(warnings) if warnings else ""
         suffix = " (stdin closed)" if eof else ""
         return _ret(
@@ -947,6 +954,7 @@ def process_session(
         err = manager.write_session(sid, "\r", eof=False, scope_key=effective_scope)
         if err:
             return _ret("tool.process.output", f"Error: {err}")
+        _request_heartbeat_wake("exec:submit")
         return _ret("tool.process.output", f"Submitted session {sid} (sent CR).")
 
     if normalized == "paste":
@@ -954,6 +962,7 @@ def process_session(
         err = manager.write_session(sid, payload, eof=False, scope_key=effective_scope)
         if err:
             return _ret("tool.process.output", f"Error: {err}")
+        _request_heartbeat_wake("exec:paste")
         mode = "bracketed" if bracketed else "plain"
         return _ret("tool.process.output", f"Pasted {len(data)} chars to session {sid} ({mode}).")
 
@@ -961,6 +970,7 @@ def process_session(
         err = manager.kill_session(sid, scope_key=effective_scope)
         if err:
             return _ret("tool.process.output", f"Error: {err}")
+        _request_heartbeat_wake("exec:kill")
         return _ret("tool.process.output", f"Termination requested for session {sid}.")
 
     if normalized == "remove":
@@ -1263,6 +1273,13 @@ def browser(
             enriched["hint"] = existing or hint
             return enriched
         return payload
+
+    def _maybe_request_hook_heartbeat(payload: dict[str, Any]) -> None:
+        if normalized not in {"upload", "dialog"}:
+            return
+        if payload.get("ok") is not True:
+            return
+        _request_heartbeat_wake(f"hook:{normalized}")
 
     def _attach_default_browser_error_code(payload: dict[str, Any]) -> dict[str, Any]:
         if payload.get("ok") is True:
@@ -1637,6 +1654,7 @@ def browser(
                             target_name=normalized_target,
                         )
                     payload = _inject_capability_warnings(payload, capability_warnings)
+                    _maybe_request_hook_heartbeat(payload)
                 return _ret("tool.browser.output", _json(payload))
         except HTTPError as e:
             detail = e.read().decode("utf-8", errors="replace")
@@ -1681,6 +1699,7 @@ def browser(
         body = normalize_profile_payload_aliases(
             _attach_default_browser_error_code(_attach_profile_switch_hint(body))
         )
+        _maybe_request_hook_heartbeat(body)
     return _ret("tool.browser.output", _json(body))
 
 
@@ -1833,6 +1852,25 @@ def configure_subagent_dispatcher(
 
     global _SUBAGENT_DISPATCHER
     _SUBAGENT_DISPATCHER = dispatcher
+
+
+def configure_heartbeat_waker(
+    requester: Callable[[str], None] | None,
+) -> None:
+    """Configure optional heartbeat wake requester used by gateway."""
+
+    global _HEARTBEAT_WAKE_REQUESTER
+    _HEARTBEAT_WAKE_REQUESTER = requester
+
+
+def _request_heartbeat_wake(reason: str) -> None:
+    if _HEARTBEAT_WAKE_REQUESTER is None:
+        return
+    try:
+        _HEARTBEAT_WAKE_REQUESTER(reason)
+    except Exception:
+        # Tool execution should not fail because heartbeat wake is unavailable.
+        return
 
 
 def _resolve_route(channel: str | None, chat_id: str | None) -> tuple[str, str]:

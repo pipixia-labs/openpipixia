@@ -17,12 +17,20 @@ from .channels.manager import ChannelManager
 from .runtime.adk_utils import extract_text, merge_text_stream
 from .runtime.cron_helpers import cron_store_path
 from .runtime.cron_service import CronJob, CronService
+from .runtime.heartbeat_status_store import write_heartbeat_status_snapshot
+from .runtime.heartbeat_utils import HEARTBEAT_TOKEN, strip_heartbeat_token
+from .runtime.heartbeat_runner import HeartbeatRunRequest, HeartbeatRunner
 from .runtime.message_time import append_execution_time, inject_request_time
 from .runtime.runner_factory import create_runner
 from .runtime.subagent_agent import build_restricted_subagent
 from .runtime.tool_context import route_context
 from .security import load_security_policy
-from .tools import SubagentSpawnRequest, configure_outbound_publisher, configure_subagent_dispatcher
+from .tools import (
+    SubagentSpawnRequest,
+    configure_heartbeat_waker,
+    configure_outbound_publisher,
+    configure_subagent_dispatcher,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,10 +95,14 @@ class Gateway:
         )
         self._inbound_task: asyncio.Task[None] | None = None
         self._cron_service: CronService | None = None
+        self._heartbeat_runner: HeartbeatRunner | None = None
         self._subagent_tasks: dict[str, asyncio.Task[None]] = {}
         self._subagent_semaphore = asyncio.Semaphore(self._subagent_max_concurrency())
         # Map logical inbound session keys (channel:chat_id) to active ADK session ids.
         self._session_overrides: dict[str, str] = {}
+        self._inflight_user_requests = 0
+        self._last_inbound_route: tuple[str, str] | None = None
+        self._last_heartbeat_delivery: dict[str, Any] | None = None
 
     @staticmethod
     def _subagent_max_concurrency() -> int:
@@ -105,6 +117,194 @@ class Gateway:
     def _cron_store_path(self) -> Path:
         workspace = load_security_policy().workspace_root
         return cron_store_path(workspace)
+
+    def _heartbeat_is_busy(self) -> bool:
+        """Return whether gateway is currently handling interactive inbound traffic."""
+        return self._inflight_user_requests > 0
+
+    def _request_heartbeat_wake(self, reason: str) -> None:
+        if self._heartbeat_runner is None:
+            return
+        self._heartbeat_runner.request_wake(reason=reason, coalesce_ms=0)
+
+    @staticmethod
+    def _heartbeat_ack_max_chars() -> int:
+        raw = os.getenv("OPENHERON_HEARTBEAT_ACK_MAX_CHARS", "300").strip()
+        try:
+            value = int(raw)
+        except ValueError:
+            value = 300
+        return max(0, value)
+
+    @staticmethod
+    def _heartbeat_show_ok() -> bool:
+        raw = os.getenv("OPENHERON_HEARTBEAT_SHOW_OK", "0").strip().lower()
+        return raw in {"1", "true", "yes", "on", "enabled"}
+
+    @staticmethod
+    def _heartbeat_show_alerts() -> bool:
+        raw = os.getenv("OPENHERON_HEARTBEAT_SHOW_ALERTS", "1").strip().lower()
+        return raw in {"1", "true", "yes", "on", "enabled"}
+
+    @staticmethod
+    def _heartbeat_target_mode() -> str:
+        raw = os.getenv("OPENHERON_HEARTBEAT_TARGET", "last").strip().lower()
+        if raw in {"none", "channel", "last"}:
+            return raw
+        return "last"
+
+    @staticmethod
+    def _heartbeat_target_channel() -> str:
+        return os.getenv("OPENHERON_HEARTBEAT_TARGET_CHANNEL", "").strip() or "local"
+
+    @staticmethod
+    def _heartbeat_target_chat_id() -> str:
+        return os.getenv("OPENHERON_HEARTBEAT_TARGET_CHAT_ID", "").strip() or "heartbeat"
+
+    def _resolve_heartbeat_target(self) -> tuple[str, str] | None:
+        mode = self._heartbeat_target_mode()
+        if mode == "none":
+            return None
+        if mode == "channel":
+            return (self._heartbeat_target_channel(), self._heartbeat_target_chat_id())
+        if self._last_inbound_route is not None:
+            return self._last_inbound_route
+        return ("local", "heartbeat")
+
+    @staticmethod
+    def _heartbeat_preview(content: str, *, max_chars: int = 120) -> str:
+        """Return one-line preview for heartbeat status/debug output."""
+        normalized = " ".join(content.split())
+        if len(normalized) <= max_chars:
+            return normalized
+        if max_chars <= 3:
+            return normalized[:max(0, max_chars)]
+        return f"{normalized[: max_chars - 3]}..."
+
+    def heartbeat_status(self) -> dict[str, Any]:
+        """Return heartbeat runtime status for diagnostics and operator tooling."""
+        if self._heartbeat_runner is None:
+            runner_status: dict[str, Any] = {
+                "running": False,
+                "enabled": False,
+                "interval_ms": None,
+                "active_hours_enabled": False,
+                "wake_pending": False,
+                "wake_reason": None,
+                "last_run_at_ms": None,
+                "last_status": None,
+                "last_reason": None,
+                "last_duration_ms": None,
+                "last_error": None,
+                "recent_reason_sources": [],
+                "recent_reason_counts": {},
+            }
+        else:
+            runner_status = dict(self._heartbeat_runner.status())
+        runner_status["target_mode"] = self._heartbeat_target_mode()
+        runner_status["last_delivery"] = dict(self._last_heartbeat_delivery or {})
+        return runner_status
+
+    def _persist_heartbeat_status_snapshot(self) -> None:
+        """Write the latest heartbeat status snapshot for CLI observability."""
+        workspace = load_security_policy().workspace_root
+        try:
+            write_heartbeat_status_snapshot(workspace, self.heartbeat_status())
+        except Exception:
+            logger.exception("Failed persisting heartbeat status snapshot")
+
+    async def _run_heartbeat(self, req: HeartbeatRunRequest) -> None:
+        """Execute one heartbeat turn through the shared ADK runner."""
+        try:
+            prompt = append_execution_time(req.prompt)
+            request = types.UserContent(parts=[types.Part.from_text(text=prompt)])
+            final = await self._run_text_stream(
+                runner=self.runner,
+                channel="local",
+                chat_id="heartbeat",
+                default_when_empty=None,
+                user_id="heartbeat",
+                session_id="heartbeat:main",
+                new_message=request,
+            )
+            normalized = strip_heartbeat_token(
+                final,
+                mode="heartbeat",
+                max_ack_chars=self._heartbeat_ack_max_chars(),
+            )
+            target = self._resolve_heartbeat_target()
+            if target is None:
+                self._last_heartbeat_delivery = {
+                    "reason": req.reason,
+                    "kind": "target-none",
+                    "delivered": False,
+                }
+                return
+            target_channel, target_chat_id = target
+            if normalized.should_skip:
+                if self._heartbeat_show_ok():
+                    await self.bus.publish_outbound(
+                        OutboundMessage(
+                            channel=target_channel,
+                            chat_id=target_chat_id,
+                            content=HEARTBEAT_TOKEN,
+                            metadata={"system": "heartbeat", "reason": req.reason},
+                        )
+                    )
+                    self._last_heartbeat_delivery = {
+                        "reason": req.reason,
+                        "kind": "ok",
+                        "delivered": True,
+                        "target_channel": target_channel,
+                        "target_chat_id": target_chat_id,
+                        "content_preview": HEARTBEAT_TOKEN,
+                    }
+                else:
+                    self._last_heartbeat_delivery = {
+                        "reason": req.reason,
+                        "kind": "ok-muted",
+                        "delivered": False,
+                        "target_channel": target_channel,
+                        "target_chat_id": target_chat_id,
+                    }
+                return
+            if not self._heartbeat_show_alerts():
+                self._last_heartbeat_delivery = {
+                    "reason": req.reason,
+                    "kind": "alert-muted",
+                    "delivered": False,
+                    "target_channel": target_channel,
+                    "target_chat_id": target_chat_id,
+                }
+                return
+            content = normalized.text.strip() or (final or "").strip()
+            if not content:
+                self._last_heartbeat_delivery = {
+                    "reason": req.reason,
+                    "kind": "empty",
+                    "delivered": False,
+                    "target_channel": target_channel,
+                    "target_chat_id": target_chat_id,
+                }
+                return
+            await self.bus.publish_outbound(
+                OutboundMessage(
+                    channel=target_channel,
+                    chat_id=target_chat_id,
+                    content=content,
+                    metadata={"system": "heartbeat", "reason": req.reason},
+                )
+            )
+            self._last_heartbeat_delivery = {
+                "reason": req.reason,
+                "kind": "alert",
+                "delivered": True,
+                "target_channel": target_channel,
+                "target_chat_id": target_chat_id,
+                "content_preview": self._heartbeat_preview(content),
+            }
+        finally:
+            self._persist_heartbeat_status_snapshot()
 
     async def _persist_session_memory_snapshot(self, *, user_id: str, session_id: str) -> None:
         """Persist one session snapshot into configured memory service.
@@ -188,6 +388,8 @@ class Gateway:
                     content=final,
                 )
             )
+        if self._heartbeat_runner is not None:
+            self._heartbeat_runner.request_wake(reason=f"cron:{job.id}", coalesce_ms=0)
         return final
 
     async def start(self) -> None:
@@ -197,17 +399,27 @@ class Gateway:
         # those tool-level sends back into the outbound queue.
         configure_outbound_publisher(self.bus.publish_outbound)
         configure_subagent_dispatcher(self._dispatch_subagent_request)
+        configure_heartbeat_waker(self._request_heartbeat_wake)
         if self._cron_service is None:
             self._cron_service = CronService(self._cron_store_path(), on_job=self._run_cron_job)
+        if self._heartbeat_runner is None:
+            self._heartbeat_runner = HeartbeatRunner(
+                on_run=self._run_heartbeat,
+                is_busy=self._heartbeat_is_busy,
+            )
         await self._cron_service.start()
+        await self._heartbeat_runner.start()
         if self.channel_manager:
             await self.channel_manager.start_all()
             await self.channel_manager.start_dispatcher()
         self._inbound_task = asyncio.create_task(self._consume_inbound())
 
     async def stop(self) -> None:
+        if self._heartbeat_runner is not None:
+            await self._heartbeat_runner.stop()
         if self._cron_service is not None:
             self._cron_service.stop()
+        configure_heartbeat_waker(None)
         configure_subagent_dispatcher(None)
         configure_outbound_publisher(None)
         await self._stop_subagent_tasks()
@@ -390,6 +602,8 @@ class Gateway:
         while True:
             # Single worker keeps message order deterministic for this skeleton.
             msg = await self.bus.consume_inbound()
+            self._last_inbound_route = (msg.channel, msg.chat_id)
+            self._inflight_user_requests += 1
             try:
                 response = await self.process_message(msg)
                 await self.bus.publish_outbound(response)
@@ -400,3 +614,5 @@ class Gateway:
                     msg.chat_id,
                     msg.sender_id,
                 )
+            finally:
+                self._inflight_user_requests = max(0, self._inflight_user_requests - 1)

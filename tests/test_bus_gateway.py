@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
 import types as pytypes
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 from google.adk.agents import LlmAgent
@@ -15,6 +18,8 @@ from openheron.bus.events import InboundMessage, OutboundMessage
 from openheron.bus.queue import MessageBus
 from openheron.gateway import Gateway
 from openheron.runtime.cron_service import CronJob, CronJobState, CronPayload, CronSchedule
+from openheron.runtime.heartbeat_runner import HeartbeatRunRequest
+from openheron.runtime.heartbeat_status_store import read_heartbeat_status_snapshot
 from openheron.tools import SubagentSpawnRequest
 
 
@@ -218,7 +223,7 @@ class GatewayLoopResilienceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
-    async def test_start_and_stop_manage_cron_service(self) -> None:
+    async def test_start_and_stop_manage_cron_and_heartbeat_service(self) -> None:
         class _FakeRunner:
             async def run_async(self, **kwargs):
                 if False:
@@ -226,13 +231,279 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
 
         fake_agent = pytypes.SimpleNamespace(name="openheron")
         fake_cron_service = pytypes.SimpleNamespace(start=AsyncMock(), stop=Mock())
+        fake_heartbeat_runner = pytypes.SimpleNamespace(start=AsyncMock(), stop=AsyncMock())
+        heartbeat_waker = Mock()
         with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            with patch("openheron.gateway.CronService", return_value=fake_cron_service):
+            with (
+                patch("openheron.gateway.CronService", return_value=fake_cron_service),
+                patch("openheron.gateway.HeartbeatRunner", return_value=fake_heartbeat_runner),
+                patch("openheron.gateway.configure_heartbeat_waker", heartbeat_waker),
+            ):
                 gateway = Gateway(agent=fake_agent, app_name="openheron", bus=MessageBus())
                 await gateway.start()
                 fake_cron_service.start.assert_awaited_once()
+                fake_heartbeat_runner.start.assert_awaited_once()
+                heartbeat_waker.assert_any_call(gateway._request_heartbeat_wake)
                 await gateway.stop()
                 fake_cron_service.stop.assert_called_once()
+                fake_heartbeat_runner.stop.assert_awaited_once()
+                heartbeat_waker.assert_called_with(None)
+
+    async def test_run_heartbeat_executes_runner_prompt(self) -> None:
+        fake_event = pytypes.SimpleNamespace(
+            content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="heartbeat response")])
+        )
+        captured: dict[str, object] = {}
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                captured.update(kwargs)
+                yield fake_event
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=MessageBus())
+
+        req = HeartbeatRunRequest(reason="manual", prompt="ops check")
+        await gateway._run_heartbeat(req)
+
+        self.assertEqual(captured["user_id"], "heartbeat")
+        self.assertEqual(captured["session_id"], "heartbeat:main")
+        request = captured["new_message"]
+        self.assertIn("ops check", request.parts[0].text)
+        self.assertIn("Current time:", request.parts[0].text)
+
+    async def test_run_heartbeat_skips_ok_delivery_when_show_ok_disabled(self) -> None:
+        fake_event = pytypes.SimpleNamespace(
+            content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="HEARTBEAT_OK")])
+        )
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                yield fake_event
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            bus = MessageBus()
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=bus)
+
+        req = HeartbeatRunRequest(reason="interval", prompt="ops check")
+        with patch.dict(os.environ, {"OPENHERON_HEARTBEAT_SHOW_OK": "0"}, clear=False):
+            await gateway._run_heartbeat(req)
+        with self.assertRaises(asyncio.TimeoutError):
+            await asyncio.wait_for(bus.consume_outbound(), timeout=0.05)
+
+    async def test_run_heartbeat_delivers_ok_when_show_ok_enabled(self) -> None:
+        fake_event = pytypes.SimpleNamespace(
+            content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="HEARTBEAT_OK")])
+        )
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                yield fake_event
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            bus = MessageBus()
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=bus)
+
+        req = HeartbeatRunRequest(reason="interval", prompt="ops check")
+        with patch.dict(os.environ, {"OPENHERON_HEARTBEAT_SHOW_OK": "1"}, clear=False):
+            await gateway._run_heartbeat(req)
+        outbound = await asyncio.wait_for(bus.consume_outbound(), timeout=0.2)
+        self.assertEqual(outbound.channel, "local")
+        self.assertEqual(outbound.chat_id, "heartbeat")
+        self.assertEqual(outbound.content, "HEARTBEAT_OK")
+
+    async def test_run_heartbeat_honors_show_alerts_for_non_ack_payloads(self) -> None:
+        fake_event = pytypes.SimpleNamespace(
+            content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="HEARTBEAT_OK alert disk full")])
+        )
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                yield fake_event
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            bus = MessageBus()
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=bus)
+
+        req = HeartbeatRunRequest(reason="interval", prompt="ops check")
+        with patch.dict(
+            os.environ,
+            {
+                "OPENHERON_HEARTBEAT_SHOW_OK": "0",
+                "OPENHERON_HEARTBEAT_SHOW_ALERTS": "0",
+                "OPENHERON_HEARTBEAT_ACK_MAX_CHARS": "0",
+            },
+            clear=False,
+        ):
+            await gateway._run_heartbeat(req)
+        with self.assertRaises(asyncio.TimeoutError):
+            await asyncio.wait_for(bus.consume_outbound(), timeout=0.05)
+
+        with patch.dict(
+            os.environ,
+            {
+                "OPENHERON_HEARTBEAT_SHOW_OK": "0",
+                "OPENHERON_HEARTBEAT_SHOW_ALERTS": "1",
+                "OPENHERON_HEARTBEAT_ACK_MAX_CHARS": "0",
+            },
+            clear=False,
+        ):
+            await gateway._run_heartbeat(req)
+        outbound = await asyncio.wait_for(bus.consume_outbound(), timeout=0.2)
+        self.assertEqual(outbound.content, "alert disk full")
+
+    async def test_run_heartbeat_routes_to_last_inbound_target(self) -> None:
+        fake_event = pytypes.SimpleNamespace(
+            content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="alert disk full")])
+        )
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                yield fake_event
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            bus = MessageBus()
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=bus)
+        gateway._last_inbound_route = ("feishu", "chat-ops")
+
+        req = HeartbeatRunRequest(reason="manual", prompt="ops check")
+        with patch.dict(os.environ, {"OPENHERON_HEARTBEAT_TARGET": "last"}, clear=False):
+            await gateway._run_heartbeat(req)
+
+        outbound = await asyncio.wait_for(bus.consume_outbound(), timeout=0.2)
+        self.assertEqual(outbound.channel, "feishu")
+        self.assertEqual(outbound.chat_id, "chat-ops")
+        self.assertEqual(outbound.content, "alert disk full")
+
+    async def test_run_heartbeat_target_none_disables_delivery(self) -> None:
+        fake_event = pytypes.SimpleNamespace(
+            content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="alert disk full")])
+        )
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                yield fake_event
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            bus = MessageBus()
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=bus)
+
+        req = HeartbeatRunRequest(reason="manual", prompt="ops check")
+        with patch.dict(os.environ, {"OPENHERON_HEARTBEAT_TARGET": "none"}, clear=False):
+            await gateway._run_heartbeat(req)
+        with self.assertRaises(asyncio.TimeoutError):
+            await asyncio.wait_for(bus.consume_outbound(), timeout=0.05)
+
+    async def test_run_heartbeat_target_channel_uses_explicit_channel_and_chat(self) -> None:
+        fake_event = pytypes.SimpleNamespace(
+            content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="HEARTBEAT_OK")])
+        )
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                yield fake_event
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            bus = MessageBus()
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=bus)
+
+        req = HeartbeatRunRequest(reason="interval", prompt="ops check")
+        with patch.dict(
+            os.environ,
+            {
+                "OPENHERON_HEARTBEAT_SHOW_OK": "1",
+                "OPENHERON_HEARTBEAT_TARGET": "channel",
+                "OPENHERON_HEARTBEAT_TARGET_CHANNEL": "slack",
+                "OPENHERON_HEARTBEAT_TARGET_CHAT_ID": "C123",
+            },
+            clear=False,
+        ):
+            await gateway._run_heartbeat(req)
+        outbound = await asyncio.wait_for(bus.consume_outbound(), timeout=0.2)
+        self.assertEqual(outbound.channel, "slack")
+        self.assertEqual(outbound.chat_id, "C123")
+        self.assertEqual(outbound.content, "HEARTBEAT_OK")
+
+    async def test_heartbeat_status_exposes_last_delivery(self) -> None:
+        fake_event = pytypes.SimpleNamespace(
+            content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="HEARTBEAT_OK alert disk full now")])
+        )
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                yield fake_event
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=MessageBus())
+
+        req = HeartbeatRunRequest(reason="manual", prompt="ops check")
+        with patch.dict(
+            os.environ,
+            {
+                "OPENHERON_HEARTBEAT_TARGET": "channel",
+                "OPENHERON_HEARTBEAT_TARGET_CHANNEL": "feishu",
+                "OPENHERON_HEARTBEAT_TARGET_CHAT_ID": "ops-room",
+                "OPENHERON_HEARTBEAT_SHOW_ALERTS": "1",
+                "OPENHERON_HEARTBEAT_ACK_MAX_CHARS": "0",
+            },
+            clear=False,
+        ):
+            await gateway._run_heartbeat(req)
+            status = gateway.heartbeat_status()
+
+        self.assertEqual(status["target_mode"], "channel")
+        self.assertEqual(status["last_delivery"]["kind"], "alert")
+        self.assertEqual(status["last_delivery"]["target_channel"], "feishu")
+        self.assertEqual(status["last_delivery"]["target_chat_id"], "ops-room")
+        self.assertIn("alert disk full", status["last_delivery"]["content_preview"])
+
+    async def test_run_heartbeat_persists_status_snapshot(self) -> None:
+        fake_event = pytypes.SimpleNamespace(
+            content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="HEARTBEAT_OK")])
+        )
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                yield fake_event
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=MessageBus())
+
+        req = HeartbeatRunRequest(reason="manual", prompt="ops check")
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = pytypes.SimpleNamespace(workspace_root=Path(tmp))
+            with patch("openheron.gateway.load_security_policy", return_value=policy):
+                with patch.dict(os.environ, {"OPENHERON_HEARTBEAT_SHOW_OK": "1"}, clear=False):
+                    await gateway._run_heartbeat(req)
+                snapshot = read_heartbeat_status_snapshot(Path(tmp))
+
+        self.assertIsNotNone(snapshot)
+        self.assertTrue(bool(snapshot and snapshot.get("last_delivery", {}).get("delivered")))
+        self.assertEqual(snapshot and snapshot.get("last_delivery", {}).get("kind"), "ok")
+
+    async def test_heartbeat_status_before_start_has_safe_defaults(self) -> None:
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                if False:
+                    yield  # pragma: no cover
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=MessageBus())
+
+        status = gateway.heartbeat_status()
+        self.assertFalse(bool(status["running"]))
+        self.assertFalse(bool(status["enabled"]))
+        self.assertEqual(status["last_delivery"], {})
 
     async def test_run_cron_job_delivers_outbound_when_enabled(self) -> None:
         fake_event = pytypes.SimpleNamespace(
@@ -271,6 +542,61 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(outbound.channel, "local")
         self.assertEqual(outbound.chat_id, "c1")
         self.assertEqual(outbound.content, "cron answer")
+
+    async def test_run_cron_job_triggers_heartbeat_wake(self) -> None:
+        fake_event = pytypes.SimpleNamespace(
+            content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="cron answer")])
+        )
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                yield fake_event
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=MessageBus())
+
+        fake_heartbeat_runner = pytypes.SimpleNamespace(request_wake=Mock())
+        gateway._heartbeat_runner = fake_heartbeat_runner
+
+        job = CronJob(
+            id="job12345",
+            name="demo",
+            enabled=True,
+            schedule=CronSchedule(kind="every", every_seconds=60),
+            payload=CronPayload(message="do work", deliver=False, channel="local", to="c1"),
+            state=CronJobState(),
+            created_at_ms=0,
+            updated_at_ms=0,
+        )
+        await gateway._run_cron_job(job)
+        fake_heartbeat_runner.request_wake.assert_called_once_with(reason="cron:job12345", coalesce_ms=0)
+
+    async def test_run_cron_job_without_heartbeat_runner_still_succeeds(self) -> None:
+        fake_event = pytypes.SimpleNamespace(
+            content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="cron answer")])
+        )
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                yield fake_event
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=MessageBus())
+
+        job = CronJob(
+            id="job12345",
+            name="demo",
+            enabled=True,
+            schedule=CronSchedule(kind="every", every_seconds=60),
+            payload=CronPayload(message="do work", deliver=False, channel="local", to="c1"),
+            state=CronJobState(),
+            created_at_ms=0,
+            updated_at_ms=0,
+        )
+        result = await gateway._run_cron_job(job)
+        self.assertEqual(result, "cron answer")
 
 
 class GatewaySubagentTests(unittest.IsolatedAsyncioTestCase):

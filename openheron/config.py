@@ -170,6 +170,21 @@ def default_config() -> dict[str, Any]:
         "agent": {
             "workspace": str(get_default_workspace_path()),
             "builtinSkillsDir": "",
+            "heartbeat": {
+                "every": "30m",
+                "prompt": "",
+                "ackMaxChars": 300,
+                "showOk": False,
+                "showAlerts": True,
+                "target": "last",
+                "targetChannel": "",
+                "targetChatId": "",
+                "activeHours": {
+                    "start": "",
+                    "end": "",
+                    "timezone": "user",
+                },
+            },
         },
         "providers": {
             name: {
@@ -551,10 +566,21 @@ def _env_overrides(cfg: dict[str, Any]) -> dict[str, str]:
     return overrides
 
 
+def _coerce_nonnegative_int(value: Any, default: int) -> int:
+    """Convert value into a non-negative integer with fallback."""
+    try:
+        parsed = int(value)
+    except Exception:
+        parsed = default
+    return max(0, parsed)
+
+
 def config_to_env(config: dict[str, Any]) -> dict[str, str]:
     """Map config payload into runtime environment variables."""
     cfg = normalize_config(config)
     agent = _as_dict(cfg.get("agent"))
+    heartbeat = _as_dict(agent.get("heartbeat"))
+    active_hours = _as_dict(heartbeat.get("activeHours"))
     session = _as_dict(cfg.get("session"))
     channels = _as_dict(cfg.get("channels"))
     channel_env = _channel_env_values(channels)
@@ -578,6 +604,21 @@ def config_to_env(config: dict[str, Any]) -> dict[str, str]:
         "OPENHERON_PROVIDER_EXTRA_HEADERS_JSON": provider_extra_headers,
         "OPENHERON_WORKSPACE": str(agent.get("workspace", "")).strip(),
         "OPENHERON_BUILTIN_SKILLS_DIR": str(agent.get("builtinSkillsDir", "")).strip(),
+        "OPENHERON_HEARTBEAT_EVERY": str(heartbeat.get("every", "30m")).strip() or "30m",
+        "OPENHERON_HEARTBEAT_PROMPT": str(heartbeat.get("prompt", "")).strip(),
+        "OPENHERON_HEARTBEAT_ACK_MAX_CHARS": str(
+            _coerce_nonnegative_int(heartbeat.get("ackMaxChars", 300), default=300)
+        ),
+        "OPENHERON_HEARTBEAT_SHOW_OK": "1" if is_enabled(heartbeat.get("showOk"), default=False) else "0",
+        "OPENHERON_HEARTBEAT_SHOW_ALERTS": "1"
+        if is_enabled(heartbeat.get("showAlerts"), default=True)
+        else "0",
+        "OPENHERON_HEARTBEAT_TARGET": str(heartbeat.get("target", "last")).strip() or "last",
+        "OPENHERON_HEARTBEAT_TARGET_CHANNEL": str(heartbeat.get("targetChannel", "")).strip(),
+        "OPENHERON_HEARTBEAT_TARGET_CHAT_ID": str(heartbeat.get("targetChatId", "")).strip(),
+        "OPENHERON_HEARTBEAT_ACTIVE_HOURS_START": str(active_hours.get("start", "")).strip(),
+        "OPENHERON_HEARTBEAT_ACTIVE_HOURS_END": str(active_hours.get("end", "")).strip(),
+        "OPENHERON_HEARTBEAT_ACTIVE_HOURS_TIMEZONE": str(active_hours.get("timezone", "user")).strip() or "user",
         "OPENHERON_SESSION_DB_URL": str(session.get("dbUrl", "")).strip(),
         "OPENHERON_CHANNELS": _resolve_enabled_channels(channels),
         "BRAVE_API_KEY": web_search_api_key,
