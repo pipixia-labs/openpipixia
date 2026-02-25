@@ -896,6 +896,20 @@ class CLITests(unittest.TestCase):
         self.assertEqual(telegram_rule.code_applied, "channel.env.backfilled")
         self.assertEqual(telegram_rule.rule, "channel_env_backfill")
 
+    def test_install_summary_requirements_cover_doctor_channel_backfill_targets(self) -> None:
+        from openheron import cli
+
+        summary_targets = {
+            f"{item.channel}.{item.key}"
+            for item in cli.INSTALL_CHANNEL_SUMMARY_REQUIREMENTS
+        }
+        doctor_targets = {
+            f"{item.channel}.{item.key}"
+            for item in cli.DOCTOR_CHANNEL_ENV_BACKFILL_RULES
+        }
+        self.assertTrue(doctor_targets.issubset(summary_targets))
+        self.assertIn("email.consentGranted", summary_targets)
+
     def test_cmd_install_prints_summary_lines(self) -> None:
         from openheron import cli
 
