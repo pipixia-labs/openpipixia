@@ -2261,6 +2261,25 @@ def _install_summary_channel_fix_hints(config_path: Path) -> dict[str, str]:
     return hints
 
 
+def _install_summary_missing(
+    *,
+    selected_provider: str,
+    provider_cfg: dict[str, Any],
+    channels_cfg: dict[str, Any],
+) -> list[str]:
+    """Collect all install summary missing items in a stable order."""
+
+    missing: list[str] = []
+    missing.extend(
+        _install_summary_provider_missing(
+            selected_provider=selected_provider,
+            provider_cfg=provider_cfg,
+        )
+    )
+    missing.extend(_install_summary_channel_missing(channels_cfg))
+    return missing
+
+
 def _install_summary_fix_hints(
     *,
     missing: list[str],
@@ -2511,17 +2530,13 @@ def _install_summary_lines(config_path: Path) -> list[str]:
     channel_args = ",".join(enabled_channels) if enabled_channels else "local"
     gateway_cmd = f"openheron gateway --channels {channel_args}"
 
-    missing: list[str] = []
-    if isinstance(provider_cfg, dict):
-        missing.extend(
-            _install_summary_provider_missing(
-                selected_provider=selected_provider,
-                provider_cfg=provider_cfg,
-            )
-        )
-
-    if isinstance(channels_cfg, dict):
-        missing.extend(_install_summary_channel_missing(channels_cfg))
+    provider_cfg_dict = provider_cfg if isinstance(provider_cfg, dict) else {}
+    channels_cfg_dict = channels_cfg if isinstance(channels_cfg, dict) else {}
+    missing = _install_summary_missing(
+        selected_provider=selected_provider,
+        provider_cfg=provider_cfg_dict,
+        channels_cfg=channels_cfg_dict,
+    )
 
     lines = [f"Install summary: provider={selected_provider}, channels={enabled_channels or ['(none)']}"]
     if missing:
