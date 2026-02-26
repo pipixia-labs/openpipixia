@@ -61,7 +61,7 @@ from .runtime.cron_helpers import cron_store_path, format_schedule, format_times
 from .runtime.cron_service import CronService
 from .runtime.cron_schedule_parser import parse_schedule_input
 from .runtime.heartbeat_status_store import read_heartbeat_status_snapshot
-from .runtime.token_usage_store import read_token_usage_stats, token_usage_db_path
+from .runtime.token_usage_store import parse_time_filter_to_epoch_ms, read_token_usage_stats, token_usage_db_path
 from .runtime.gateway_service import (
     detect_service_manager,
     gateway_service_name,
@@ -3639,12 +3639,45 @@ def _cmd_heartbeat_status(*, output_json: bool) -> int:
     return 0
 
 
-def _cmd_token_stats(*, output_json: bool, limit: int, provider: str | None) -> int:
+def _cmd_token_stats(
+    *,
+    output_json: bool,
+    limit: int,
+    provider: str | None,
+    since: str | None,
+    until: str | None,
+    last_hours: int | None,
+) -> int:
     """Show aggregated LLM token usage and recent request records."""
-    stats = read_token_usage_stats(limit=limit, provider=provider or None)
+    since_ms: int | None = None
+    until_ms: int | None = None
+    if last_hours is not None:
+        now_ms = int(time.time() * 1000)
+        since_ms = now_ms - (max(1, int(last_hours)) * 3600 * 1000)
+        until_ms = now_ms
+    else:
+        try:
+            since_ms = parse_time_filter_to_epoch_ms(since)
+            until_ms = parse_time_filter_to_epoch_ms(until)
+        except ValueError as exc:
+            _stdout_line(f"Error: invalid --since/--until value ({exc})")
+            return 1
+    if since_ms is not None and until_ms is not None and since_ms > until_ms:
+        _stdout_line("Error: --since must be earlier than or equal to --until")
+        return 1
+
+    stats = read_token_usage_stats(
+        limit=limit,
+        provider=provider or None,
+        since_ms=since_ms,
+        until_ms=until_ms,
+    )
     payload: dict[str, Any] = {
         "dbPath": str(token_usage_db_path()),
         "provider": provider or "",
+        "since": since or "",
+        "until": until or "",
+        "lastHours": int(last_hours) if last_hours is not None else None,
         **stats,
     }
     if output_json:
@@ -3658,6 +3691,10 @@ def _cmd_token_stats(*, output_json: bool, limit: int, provider: str | None) -> 
         f"response_tokens={stats['response_tokens']}, "
         f"total_tokens={stats['total_tokens']}"
     )
+    if last_hours is not None:
+        _stdout_line(f"Time range: last_hours={int(last_hours)}")
+    elif since or until:
+        _stdout_line(f"Time range: since={since or '-'}, until={until or '-'}")
     _stdout_line(
         "Token by modality: "
         f"request(text={stats['request_text_tokens']}, image={stats['request_image_tokens']}), "
@@ -3691,6 +3728,9 @@ def _dispatch_token_command(args: argparse.Namespace, parser: argparse.ArgumentP
             output_json=args.output_json,
             limit=args.limit,
             provider=args.provider,
+            since=args.since,
+            until=args.until,
+            last_hours=args.last_hours,
         ),
     }
     handler = token_handlers.get(args.token_command)
@@ -4079,6 +4119,22 @@ def main(argv: list[str] | None = None) -> None:
         "--provider",
         default=None,
         help="Optional provider filter, e.g. google/openai.",
+    )
+    token_stats_parser.add_argument(
+        "--since",
+        default=None,
+        help="Optional inclusive start time in ISO8601, e.g. 2026-02-26T00:00:00+08:00.",
+    )
+    token_stats_parser.add_argument(
+        "--until",
+        default=None,
+        help="Optional inclusive end time in ISO8601, e.g. 2026-02-26T23:59:59+08:00.",
+    )
+    token_stats_parser.add_argument(
+        "--last-hours",
+        type=int,
+        default=None,
+        help="Shortcut time filter for recent N hours (overrides --since/--until).",
     )
     gateway_service_parser = subparsers.add_parser(
         "gateway-service",

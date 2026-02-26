@@ -2616,9 +2616,30 @@ class CLITests(unittest.TestCase):
         with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
             with patch.object(cli, "_cmd_token_stats", return_value=0) as mocked_stats:
                 with self.assertRaises(SystemExit) as ctx:
-                    cli.main(["token", "stats", "--json", "--limit", "5", "--provider", "google"])
+                    cli.main(
+                        [
+                            "token",
+                            "stats",
+                            "--json",
+                            "--limit",
+                            "5",
+                            "--provider",
+                            "google",
+                            "--since",
+                            "2026-02-26T00:00:00+08:00",
+                            "--until",
+                            "2026-02-26T23:59:59+08:00",
+                        ]
+                    )
                 self.assertEqual(ctx.exception.code, 0)
-                mocked_stats.assert_called_once_with(output_json=True, limit=5, provider="google")
+                mocked_stats.assert_called_once_with(
+                    output_json=True,
+                    limit=5,
+                    provider="google",
+                    since="2026-02-26T00:00:00+08:00",
+                    until="2026-02-26T23:59:59+08:00",
+                    last_hours=None,
+                )
                 mocked_bootstrap.assert_called_once()
 
     def test_cron_add_dispatch_does_not_trigger_single_turn_message(self) -> None:
@@ -2820,14 +2841,28 @@ class CLITests(unittest.TestCase):
         with patch.object(cli, "read_token_usage_stats", return_value=fake_stats) as mocked_read:
             with patch.object(cli, "token_usage_db_path", return_value=Path("/tmp/token_usage.db")):
                 with patch("builtins.print") as mocked_info:
-                    code = cli._cmd_token_stats(output_json=False, limit=10, provider=None)
+                    code = cli._cmd_token_stats(
+                        output_json=False,
+                        limit=10,
+                        provider=None,
+                        since=None,
+                        until=None,
+                        last_hours=24,
+                    )
 
         self.assertEqual(code, 0)
-        mocked_read.assert_called_once_with(limit=10, provider=None)
+        mocked_read.assert_called_once()
+        kwargs = mocked_read.call_args.kwargs
+        self.assertEqual(kwargs["limit"], 10)
+        self.assertIsNone(kwargs["provider"])
+        self.assertIsInstance(kwargs["since_ms"], int)
+        self.assertIsInstance(kwargs["until_ms"], int)
+        self.assertLess(kwargs["since_ms"], kwargs["until_ms"])
         lines = [call.args[0] for call in mocked_info.call_args_list if call.args]
         self.assertTrue(any("requests=2" in line for line in lines))
         self.assertTrue(any("Token DB: /tmp/token_usage.db" in line for line in lines))
         self.assertTrue(any("provider=google" in line for line in lines))
+        self.assertTrue(any("last_hours=24" in line for line in lines))
 
     def test_cmd_token_stats_outputs_json(self) -> None:
         from openheron import cli
@@ -2846,13 +2881,37 @@ class CLITests(unittest.TestCase):
         with patch.object(cli, "read_token_usage_stats", return_value=fake_stats):
             with patch.object(cli, "token_usage_db_path", return_value=Path("/tmp/token_usage.db")):
                 with patch("builtins.print") as mocked_info:
-                    code = cli._cmd_token_stats(output_json=True, limit=20, provider="google")
+                    code = cli._cmd_token_stats(
+                        output_json=True,
+                        limit=20,
+                        provider="google",
+                        since="2026-02-26T00:00:00+08:00",
+                        until="2026-02-26T23:59:59+08:00",
+                        last_hours=None,
+                    )
 
         self.assertEqual(code, 0)
         payload = json.loads(mocked_info.call_args[0][0])
         self.assertEqual(payload["provider"], "google")
         self.assertEqual(payload["requests"], 0)
         self.assertEqual(payload["dbPath"], "/tmp/token_usage.db")
+        self.assertEqual(payload["since"], "2026-02-26T00:00:00+08:00")
+        self.assertEqual(payload["until"], "2026-02-26T23:59:59+08:00")
+
+    def test_cmd_token_stats_invalid_time_range_returns_error(self) -> None:
+        from openheron import cli
+
+        with patch("builtins.print") as mocked_info:
+            code = cli._cmd_token_stats(
+                output_json=False,
+                limit=20,
+                provider=None,
+                since="2026-02-27T00:00:00+08:00",
+                until="2026-02-26T23:59:59+08:00",
+                last_hours=None,
+            )
+        self.assertEqual(code, 1)
+        self.assertIn("--since must be earlier", mocked_info.call_args[0][0])
 
     def test_cmd_doctor_reports_whatsapp_bridge_precheck_issue(self) -> None:
         from openheron import cli

@@ -169,6 +169,8 @@ openheron gateway-service status
 openheron doctor
 openheron heartbeat status
 openheron token stats --provider google --limit 50
+openheron token stats --since 2026-02-26T00:00:00+08:00 --until 2026-02-26T23:59:59+08:00
+openheron token stats --last-hours 24
 ```
 
 For full subcommand options, use the `--help` entries in "Command discovery" above.

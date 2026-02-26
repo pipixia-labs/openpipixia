@@ -10,6 +10,7 @@ from pathlib import Path
 from openheron.runtime.token_usage_store import (
     ensure_token_usage_schema,
     extract_usage_tokens,
+    parse_time_filter_to_epoch_ms,
     read_token_usage_stats,
     write_token_usage_event,
 )
@@ -115,6 +116,64 @@ class TokenUsageStoreTests(unittest.TestCase):
         self.assertEqual(google_stats["requests"], 1)
         self.assertEqual(google_stats["total_tokens"], 30)
         self.assertEqual(google_stats["recent"][0]["provider"], "google")
+
+    def test_read_token_usage_stats_filters_by_time_range(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "token_usage.db"
+            ensure_token_usage_schema(db_path)
+            write_token_usage_event(
+                {
+                    "request_at": "2026-02-26T10:00:00+00:00",
+                    "request_at_ms": 1000,
+                    "response_at": "2026-02-26T10:00:01+00:00",
+                    "response_at_ms": 2000,
+                    "provider": "google",
+                    "model": "gemini-2.5-pro",
+                    "session_id": "s1",
+                    "invocation_id": "inv1",
+                    "request_tokens": 10,
+                    "response_tokens": 5,
+                    "request_text_tokens": 10,
+                    "response_text_tokens": 5,
+                    "request_image_tokens": 0,
+                    "response_image_tokens": 0,
+                    "total_tokens": 15,
+                    "raw_usage": {},
+                },
+                db_path,
+            )
+            write_token_usage_event(
+                {
+                    "request_at": "2026-02-26T10:00:02+00:00",
+                    "request_at_ms": 3000,
+                    "response_at": "2026-02-26T10:00:03+00:00",
+                    "response_at_ms": 4000,
+                    "provider": "openai",
+                    "model": "openai/gpt-5",
+                    "session_id": "s2",
+                    "invocation_id": "inv2",
+                    "request_tokens": 20,
+                    "response_tokens": 10,
+                    "request_text_tokens": 20,
+                    "response_text_tokens": 10,
+                    "request_image_tokens": 0,
+                    "response_image_tokens": 0,
+                    "total_tokens": 30,
+                    "raw_usage": {},
+                },
+                db_path,
+            )
+
+            filtered = read_token_usage_stats(limit=10, since_ms=2500, until_ms=5000, db_path=db_path)
+
+        self.assertEqual(filtered["requests"], 1)
+        self.assertEqual(filtered["total_tokens"], 30)
+        self.assertEqual(filtered["recent"][0]["provider"], "openai")
+
+    def test_parse_time_filter_to_epoch_ms_accepts_iso8601(self) -> None:
+        parsed = parse_time_filter_to_epoch_ms("2026-02-26T00:00:00+00:00")
+        self.assertIsInstance(parsed, int)
+        self.assertGreater(parsed, 0)
 
 
 if __name__ == "__main__":

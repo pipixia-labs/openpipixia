@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -208,20 +209,43 @@ def write_token_usage_event(event: dict[str, Any], db_path: Path | None = None) 
         )
 
 
+def parse_time_filter_to_epoch_ms(raw: str | None) -> int | None:
+    """Parse ISO8601-like timestamp to epoch milliseconds."""
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    normalized = value
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    dt = datetime.fromisoformat(normalized)
+    return int(dt.timestamp() * 1000)
+
+
 def read_token_usage_stats(
     *,
     limit: int = 20,
     provider: str | None = None,
+    since_ms: int | None = None,
+    until_ms: int | None = None,
     db_path: Path | None = None,
 ) -> dict[str, Any]:
     """Read summary counters and recent token usage events."""
     ensure_token_usage_schema(db_path)
     with _connect(db_path) as conn:
-        where = ""
+        conditions: list[str] = []
         params: list[Any] = []
         if provider:
-            where = " WHERE provider = ?"
+            conditions.append("provider = ?")
             params.append(provider)
+        if since_ms is not None:
+            conditions.append("response_at_ms >= ?")
+            params.append(int(since_ms))
+        if until_ms is not None:
+            conditions.append("response_at_ms <= ?")
+            params.append(int(until_ms))
+        where = ""
+        if conditions:
+            where = " WHERE " + " AND ".join(conditions)
 
         totals = conn.execute(
             (
@@ -262,5 +286,7 @@ def read_token_usage_stats(
         "request_image_tokens": int(totals["request_image_tokens"]) if totals else 0,
         "response_image_tokens": int(totals["response_image_tokens"]) if totals else 0,
         "total_tokens": int(totals["total_tokens"]) if totals else 0,
+        "since_ms": int(since_ms) if since_ms is not None else None,
+        "until_ms": int(until_ms) if until_ms is not None else None,
         "recent": [dict(row) for row in recent_rows],
     }
