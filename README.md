@@ -31,6 +31,7 @@ python -m openheron.cli -m "Describe what you can do"
 
 - config/workspace initialization
 - optional interactive provider/channel setup
+- guided missing-field review for enabled provider/channels (interactive mode)
 - diagnostics (`openheron doctor`)
 - install summary + next command suggestions
 

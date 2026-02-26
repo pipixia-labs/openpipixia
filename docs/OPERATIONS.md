@@ -17,6 +17,7 @@ openheron install
 
 - 初始化配置与工作区
 - 交互式选择 provider/channel（TTY 模式）
+- 交互式缺失字段复核与补填（仅交互模式）
 - 运行 `openheron doctor`
 - 输出安装摘要与下一步命令
 - 可选一步安装并启用 gateway daemon（`--install-daemon`）

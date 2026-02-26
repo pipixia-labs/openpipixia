@@ -2082,6 +2082,82 @@ def _apply_install_channel_prompt_rules(
     )
 
 
+def _active_provider_name(providers_cfg: dict[str, Any]) -> str:
+    """Resolve currently enabled provider from config payload."""
+    for name in provider_names():
+        item = providers_cfg.get(name, {})
+        if isinstance(item, dict) and bool(item.get("enabled")):
+            return name
+    return DEFAULT_PROVIDER
+
+
+def _review_install_missing_fields(
+    *,
+    providers_cfg: dict[str, Any],
+    channels_cfg: dict[str, Any],
+    input_fn: Callable[[str], str],
+    secret_input_fn: Callable[[str], str] | None = None,
+) -> None:
+    """Offer one guided pass to fill missing required fields for enabled items."""
+    selected_provider = _active_provider_name(providers_cfg)
+    provider_cfg = providers_cfg if isinstance(providers_cfg, dict) else {}
+    channel_cfg = channels_cfg if isinstance(channels_cfg, dict) else {}
+    max_rounds = 2
+    rounds = 0
+    while rounds < max_rounds:
+        missing = install_rules.install_summary_missing(
+            selected_provider=selected_provider,
+            provider_cfg=provider_cfg,
+            channels_cfg=channel_cfg,
+            provider_requirements=INSTALL_PROVIDER_SUMMARY_REQUIREMENTS,
+            channel_requirements=INSTALL_CHANNEL_SUMMARY_REQUIREMENTS,
+        )
+        if not missing:
+            return
+
+        _stdout_line("Install setup: still missing required fields for enabled provider/channels:")
+        for item in missing:
+            _stdout_line(f"- {item}")
+        answer = input_fn("Install setup: fill these missing fields now? (Y/n)> ").strip().lower()
+        if answer in {"n", "no"}:
+            return
+
+        if f"{selected_provider}.apiKey" in missing:
+            provider_adapter = resolve_provider_onboarding_adapter(selected_provider)
+            key_env = provider_api_key_env(selected_provider)
+            provider_spec = find_provider_spec(selected_provider)
+            if provider_adapter is None and key_env and not (provider_spec and provider_spec.is_oauth):
+                provider_adapter = ApiKeyProviderOnboardingAdapter(
+                    provider_name=selected_provider,
+                    prompt=f"API key for {selected_provider} (required for enabled provider)> ",
+                )
+            if provider_adapter is not None and isinstance(provider_cfg.get(selected_provider), dict):
+                provider_adapter.collect_credentials(
+                    provider_cfg=provider_cfg[selected_provider],
+                    input_fn=input_fn,
+                    secret_input_fn=secret_input_fn,
+                )
+
+        channels_to_review: list[str] = []
+        for item in missing:
+            if not item.startswith("channels."):
+                continue
+            parts = item.split(".")
+            if len(parts) < 3:
+                continue
+            channel_name = parts[1]
+            if channel_name not in channels_to_review:
+                channels_to_review.append(channel_name)
+        if channels_to_review:
+            install_rules.apply_install_channel_prompt_rules(
+                channels_cfg=channel_cfg,
+                enabled_channels=channels_to_review,
+                input_fn=input_fn,
+                secret_input_fn=secret_input_fn,
+            )
+        rounds += 1
+
+
 def _run_install_interactive_setup(
     *,
     config_path: Path,
@@ -2089,6 +2165,7 @@ def _run_install_interactive_setup(
     select_fn: Callable[[str, list[str], str], str] | None = None,
     secret_input_fn: Callable[[str], str] | None = None,
     multi_select_fn: Callable[[str, list[str], list[str]], list[str]] | None = None,
+    review_missing: bool = False,
 ) -> None:
     """Collect minimal interactive install choices and persist config changes."""
 
@@ -2203,6 +2280,15 @@ def _run_install_interactive_setup(
                 input_fn=input_fn,
                 secret_input_fn=secret_input_fn,
             )
+
+    # Second guided pass: validate missing required fields and offer refill.
+    if review_missing:
+        _review_install_missing_fields(
+            providers_cfg=providers_cfg if isinstance(providers_cfg, dict) else {},
+            channels_cfg=channels_cfg if isinstance(channels_cfg, dict) else {},
+            input_fn=input_fn,
+            secret_input_fn=secret_input_fn,
+        )
 
     save_config(config, config_path=config_path)
     _stdout_line(f"Install setup saved: {config_path}")
@@ -2367,6 +2453,187 @@ def _install_prereq_lines() -> list[str]:
     return lines
 
 
+def _render_install_sections_with_rich(*, summary_lines: list[str], prereq_lines: list[str]) -> bool:
+    """Render install summary/prereq sections with Rich when terminal supports it."""
+    if not sys.stdout.isatty():
+        return False
+    try:
+        from rich.console import Console  # type: ignore
+        from rich.panel import Panel  # type: ignore
+        from rich.table import Table  # type: ignore
+    except Exception:
+        return False
+
+    console = Console()
+    summary_table = Table(show_header=False, box=None, pad_edge=False)
+    summary_table.add_column("key", style="bold cyan", no_wrap=True)
+    summary_table.add_column("value", style="white")
+    next_steps: list[str] = []
+    missing_items: list[str] = []
+    fix_items: list[str] = []
+    notes: list[str] = []
+
+    for line in summary_lines:
+        raw = line.strip()
+        if not raw.startswith("Install summary:"):
+            notes.append(raw)
+            continue
+        content = raw[len("Install summary:") :].strip()
+        if content.startswith("provider="):
+            summary_table.add_row("Active", content)
+        elif content.startswith("missing="):
+            summary_table.add_row("Missing", content[len("missing=") :])
+            value = content[len("missing=") :].strip()
+            if value.startswith("[") and value.endswith("]"):
+                body = value[1:-1].strip()
+                if body:
+                    missing_items = [item.strip().strip("'\"") for item in body.split(",") if item.strip()]
+        elif content.startswith("fixes="):
+            summary_table.add_row("Fixes", content[len("fixes=") :])
+            value = content[len("fixes=") :].strip()
+            if value.startswith("[") and value.endswith("]"):
+                body = value[1:-1].strip()
+                if body:
+                    fix_items = [item.strip().strip("'\"") for item in body.split(",") if item.strip()]
+        elif content.startswith("next["):
+            next_steps.append(content.split("=", 1)[1].strip() if "=" in content else content)
+        else:
+            notes.append(content)
+
+    if summary_table.row_count > 0:
+        console.print(
+            Panel(
+                summary_table,
+                title="[bold]Install Summary[/bold]",
+                border_style="cyan",
+            )
+        )
+
+    if missing_items:
+        grouped_missing: dict[str, list[str]] = {"provider": [], "channel": [], "other": []}
+        for item in missing_items:
+            if item.startswith("channels."):
+                grouped_missing["channel"].append(item)
+            elif "." in item:
+                grouped_missing["provider"].append(item)
+            else:
+                grouped_missing["other"].append(item)
+        missing_table = Table(show_header=True, box=None, pad_edge=False)
+        missing_table.add_column("Group", style="bold yellow", no_wrap=True)
+        missing_table.add_column("Missing Field", style="yellow")
+        for group_name in ("provider", "channel", "other"):
+            for item in grouped_missing[group_name]:
+                missing_table.add_row(group_name, item)
+        console.print(Panel(missing_table, title="[bold]Required Fields[/bold]", border_style="yellow"))
+
+    if fix_items:
+        fix_table = Table(show_header=True, box=None, pad_edge=False)
+        fix_table.add_column("Suggested Fix", style="green")
+        for item in fix_items:
+            fix_table.add_row(item)
+        console.print(Panel(fix_table, title="[bold]Suggested Fixes[/bold]", border_style="green"))
+
+    if prereq_lines:
+        prereq_table = Table(show_header=True, box=None, pad_edge=False)
+        prereq_table.add_column("Status", style="bold", no_wrap=True)
+        prereq_table.add_column("Check")
+        for line in prereq_lines:
+            normalized = _doctor_install_prereq_line(line)
+            status = "OK"
+            style = "green"
+            if "[warn]" in normalized:
+                status = "WARN"
+                style = "yellow"
+            detail = normalized
+            if ":" in normalized:
+                detail = normalized.split(":", 1)[1].strip()
+            prereq_table.add_row(f"[{style}]{status}[/{style}]", detail)
+        console.print(Panel(prereq_table, title="[bold]Prerequisites[/bold]", border_style="magenta"))
+
+    if next_steps:
+        next_table = Table(show_header=False, box=None, pad_edge=False)
+        next_table.add_column("step", style="bold cyan", no_wrap=True)
+        next_table.add_column("command", style="white")
+        for index, step in enumerate(next_steps, start=1):
+            next_table.add_row(str(index), step)
+        console.print(Panel(next_table, title="[bold]Next Commands[/bold]", border_style="blue"))
+
+    for note in notes:
+        if note:
+            console.print(note)
+    return True
+
+
+def _render_install_welcome_with_rich(
+    *,
+    mode: str,
+    config_path: Path,
+    runtime_config_path: Path,
+    install_daemon: bool,
+) -> bool:
+    """Render install welcome card when Rich + TTY are available."""
+    if not sys.stdout.isatty():
+        return False
+    try:
+        from rich.console import Console  # type: ignore
+        from rich.panel import Panel  # type: ignore
+        from rich.table import Table  # type: ignore
+    except Exception:
+        return False
+
+    console = Console()
+    table = Table(show_header=False, box=None, pad_edge=False)
+    table.add_column("key", style="bold cyan", no_wrap=True)
+    table.add_column("value", style="white")
+    table.add_row("Mode", mode)
+    table.add_row("Config", str(config_path))
+    table.add_row("Runtime", str(runtime_config_path))
+    table.add_row("Daemon", "enabled" if install_daemon else "disabled")
+    console.print(Panel(table, title="[bold]Openheron Install Wizard[/bold]", border_style="cyan"))
+    return True
+
+
+def _render_install_step_outcome_with_rich(*, step: int, total: int, outcome: str, message: str) -> bool:
+    """Render one install step outcome line in Rich mode."""
+    if not sys.stdout.isatty():
+        return False
+    try:
+        from rich.console import Console  # type: ignore
+    except Exception:
+        return False
+    icon = "✓"
+    style = "green"
+    if outcome == "warn":
+        icon = "!"
+        style = "yellow"
+    elif outcome == "fail":
+        icon = "x"
+        style = "red"
+    Console().print(f"[{style}]{icon}[/{style}] step {step}/{total} {message}")
+    return True
+
+
+def _render_install_action_plan_with_rich(*, commands: list[str], title: str = "Action Plan") -> bool:
+    """Render final install next-step commands in Rich mode."""
+    if not sys.stdout.isatty():
+        return False
+    try:
+        from rich.console import Console  # type: ignore
+        from rich.panel import Panel  # type: ignore
+        from rich.table import Table  # type: ignore
+    except Exception:
+        return False
+    if not commands:
+        return False
+    table = Table(show_header=False, box=None, pad_edge=False)
+    table.add_column("step", style="bold blue", no_wrap=True)
+    table.add_column("command", style="white")
+    for idx, cmd in enumerate(commands, start=1):
+        table.add_row(str(idx), cmd)
+    Console().print(Panel(table, title=f"[bold]{title}[/bold]", border_style="blue"))
+    return True
+
+
 def _cmd_install(
     *,
     force: bool,
@@ -2377,6 +2644,16 @@ def _cmd_install(
     init_only: bool = False,
 ) -> int:
     """Run a minimal installation flow for first-time local setup."""
+    config_path = get_config_path()
+    runtime_config_path = config_path.with_name("runtime.json")
+    mode = "init-only" if init_only else ("non-interactive" if non_interactive else "interactive")
+    _render_install_welcome_with_rich(
+        mode=mode,
+        config_path=config_path,
+        runtime_config_path=runtime_config_path,
+        install_daemon=install_daemon,
+    )
+
     if init_only:
         if non_interactive or accept_risk or install_daemon or daemon_channels:
             _stdout_line(
@@ -2395,9 +2672,14 @@ def _cmd_install(
     _install_step_line(1, total_steps, "initializing config and workspace...")
     onboard_code = _cmd_onboard(force=force)
     if onboard_code != 0:
+        _render_install_step_outcome_with_rich(
+            step=1, total=total_steps, outcome="fail", message="setup initialization failed"
+        )
         return onboard_code
+    _render_install_step_outcome_with_rich(
+        step=1, total=total_steps, outcome="done", message="setup initialization complete"
+    )
 
-    config_path = get_config_path()
     if not non_interactive:
         if sys.stdin.isatty():
             _run_install_interactive_setup(
@@ -2406,35 +2688,62 @@ def _cmd_install(
                 select_fn=_interactive_install_select,
                 secret_input_fn=_interactive_install_secret,
                 multi_select_fn=_interactive_install_multi_select,
+                review_missing=True,
             )
         else:
             _stdout_line("Install setup skipped: non-interactive terminal.")
-    for line in _install_summary_lines(config_path):
-        _stdout_line(line)
-    for line in _install_prereq_lines():
-        _stdout_line(line)
+    summary_lines = _install_summary_lines(config_path)
+    prereq_lines = _install_prereq_lines()
+    if not _render_install_sections_with_rich(summary_lines=summary_lines, prereq_lines=prereq_lines):
+        for line in summary_lines:
+            _stdout_line(line)
+        for line in prereq_lines:
+            _stdout_line(line)
 
     bootstrap_env_from_config()
     _install_step_line(2, total_steps, "running environment checks...")
     doctor_code = _cmd_doctor(output_json=False, verbose=False)
     if doctor_code != 0:
+        _render_install_step_outcome_with_rich(
+            step=2, total=total_steps, outcome="fail", message="doctor reported issues"
+        )
         _stdout_line("Install completed with issues. Fix the items above, then rerun `openheron doctor`.")
+        _render_install_action_plan_with_rich(
+            commands=["openheron doctor", "openheron install --non-interactive --accept-risk"],
+            title="Retry Plan",
+        )
         return 1
+    _render_install_step_outcome_with_rich(
+        step=2, total=total_steps, outcome="done", message="environment checks passed"
+    )
 
     if install_daemon:
         channels_value = _install_gateway_channels(config_path, daemon_channels)
         _install_step_line(3, total_steps, "installing gateway daemon...")
         daemon_code = _cmd_gateway_service_install(force=force, channels=channels_value, enable=True)
         if daemon_code != 0:
+            _render_install_step_outcome_with_rich(
+                step=3, total=total_steps, outcome="warn", message="daemon setup failed (main install completed)"
+            )
             _stdout_line("Install daemon setup failed. Main install is complete; please run daemon install manually.")
             _stdout_line(
                 f"Install daemon retry: openheron gateway-service install --enable --channels {channels_value}"
             )
+            _render_install_action_plan_with_rich(
+                commands=[f"openheron gateway-service install --enable --channels {channels_value}"],
+                title="Daemon Retry",
+            )
         else:
+            _render_install_step_outcome_with_rich(
+                step=3, total=total_steps, outcome="done", message="daemon setup complete"
+            )
             _stdout_line("Install daemon setup complete.")
 
     if not non_interactive:
         _stdout_line("Install complete. Next: run `openheron gateway`.")
+    _render_install_action_plan_with_rich(
+        commands=["openheron doctor", "openheron gateway"],
+    )
     return 0
 
 

@@ -814,6 +814,46 @@ class CLITests(unittest.TestCase):
         adapter.collect_credentials.assert_called_once()
         self.assertEqual(updated["channels"]["telegram"]["token"], "adapter-token")
 
+    def test_review_install_missing_fields_can_fill_provider_and_channel(self) -> None:
+        from openheron import cli
+
+        cfg = cli.default_config()
+        cfg["providers"]["google"]["enabled"] = True
+        cfg["providers"]["google"]["apiKey"] = ""
+        cfg["channels"]["local"]["enabled"] = False
+        cfg["channels"]["feishu"]["enabled"] = True
+        cfg["channels"]["feishu"]["appId"] = ""
+        cfg["channels"]["feishu"]["appSecret"] = ""
+        answers = iter(["y", "google-key", "feishu-app-id", "feishu-app-secret"])
+
+        with patch("builtins.print"):
+            cli._review_install_missing_fields(
+                providers_cfg=cfg["providers"],
+                channels_cfg=cfg["channels"],
+                input_fn=lambda _prompt: next(answers),
+            )
+
+        self.assertEqual(cfg["providers"]["google"]["apiKey"], "google-key")
+        self.assertEqual(cfg["channels"]["feishu"]["appId"], "feishu-app-id")
+        self.assertEqual(cfg["channels"]["feishu"]["appSecret"], "feishu-app-secret")
+
+    def test_review_install_missing_fields_respects_skip_choice(self) -> None:
+        from openheron import cli
+
+        cfg = cli.default_config()
+        cfg["providers"]["google"]["enabled"] = True
+        cfg["providers"]["google"]["apiKey"] = ""
+        answers = iter(["n"])
+
+        with patch("builtins.print"):
+            cli._review_install_missing_fields(
+                providers_cfg=cfg["providers"],
+                channels_cfg=cfg["channels"],
+                input_fn=lambda _prompt: next(answers),
+            )
+
+        self.assertEqual(cfg["providers"]["google"]["apiKey"], "")
+
     def test_cmd_install_skips_interactive_setup_in_non_tty(self) -> None:
         from openheron import cli
 
