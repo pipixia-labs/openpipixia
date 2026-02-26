@@ -22,6 +22,7 @@ Compared with larger systems, this project keeps the core runtime compact and ea
 cd openheron_root
 python3.14 -m venv .venv
 source .venv/bin/activate
+pip install .
 openheron install
 python -m openheron.cli -m "Describe what you can do"
 ```
