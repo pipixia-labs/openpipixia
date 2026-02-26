@@ -7,7 +7,6 @@
 - [OPERATIONS.md](./OPERATIONS.md): 运行方式、网关模式、WhatsApp Bridge、Cron、测试
 - [CONFIGURATION.md](./CONFIGURATION.md): 配置模型、环境变量、配置样例、平台说明
 - [MCP_SECURITY.md](./MCP_SECURITY.md): MCP 接入和安全策略
-- [OPENCLAW_INSTALL_ALIGNMENT.md](./OPENCLAW_INSTALL_ALIGNMENT.md): OpenClaw 安装/引导能力对齐现状与差异清单
 
 ## 维护建议
 
