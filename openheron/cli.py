@@ -3784,11 +3784,14 @@ def _cmd_gateway_service_install(*, force: bool, channels: str, enable: bool) ->
         disable_hint = f"systemctl --user disable --now {service_name}.service"
 
     manifest_path.write_text(manifest, encoding="utf-8")
+    _stdout_line("Gateway service install: this config lets OS user service manager run `openheron gateway`.")
     _stdout_line(f"Gateway service manifest written: {manifest_path}")
     _stdout_line(f"Gateway service manager: {manager}")
     _stdout_line(f"Gateway service channels: {channels_value}")
-    _stdout_line(f"Next enable command: {enable_hint}")
+    _stdout_line(f"Gateway service logs: stdout={stdout_log}, stderr={stderr_log}")
+    _stdout_line(f"Next step (enable/start): {enable_hint}")
     _stdout_line(f"Stop/disable command: {disable_hint}")
+    _stdout_line("Tip: use `openheron gateway status` for process status, `openheron gateway-service status` for manifest state.")
     if enable:
         ok, message = _run_gateway_service_enable(
             manager=manager,
@@ -3825,9 +3828,17 @@ def _cmd_gateway_service_status(*, output_json: bool) -> int:
             _stdout_line("Gateway service: unsupported platform")
         else:
             _stdout_line(
-                f"Gateway service: manager={manager}, name={service_name}, "
-                f"manifest={payload.get('manifestPath')}, exists={payload.get('manifestExists')}"
+                "Gateway service status: "
+                f"manager={manager}, "
+                f"service_name={service_name}, "
+                f"manifest_path={payload.get('manifestPath')}, "
+                f"manifest_exists={payload.get('manifestExists')}"
             )
+            if payload.get("manifestExists"):
+                _stdout_line("Manifest is ready. If service is not running yet, run `openheron gateway-service install --enable`.")
+            else:
+                _stdout_line("Manifest not found. Run `openheron gateway-service install` first.")
+            _stdout_line("Note: this checks service manifest only; use `openheron gateway status` for process runtime state.")
     return 0
 
 
@@ -3856,7 +3867,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     install_parser = subparsers.add_parser(
         "install",
-        help="Run guided installation (onboard + setup + doctor + next-step hints).",
+        help="Run guided installation and setup checks. See `openheron install --help` for full options.",
+        description=(
+            "Guided installer: initialize config/workspace, optional interactive setup, "
+            "doctor checks, and next-step hints."
+        ),
     )
     install_parser.add_argument(
         "--init-only",
@@ -3924,7 +3939,11 @@ def main(argv: list[str] | None = None) -> None:
     gateway_parser.add_argument("--chat-id", default="terminal", help="Chat id used for inbound messages.")
     gateway_parser = subparsers.add_parser(
         "gateway",
-        help="Run gateway (foreground) or manage background gateway service.",
+        help="Run gateway in foreground, or start/stop/restart/status background gateway process.",
+        description=(
+            "Gateway runtime command. Without action it runs in foreground; with action "
+            "it manages the background gateway process."
+        ),
     )
     gateway_parser.add_argument(
         "gateway_action",
@@ -4063,14 +4082,22 @@ def main(argv: list[str] | None = None) -> None:
     )
     gateway_service_parser = subparsers.add_parser(
         "gateway-service",
-        help="Manage user-level gateway service manifest (launchd/systemd user).",
+        help="Manage OS user service config (launchd/systemd) that runs `openheron gateway`.",
+        description=(
+            "Service-manager integration for gateway. This does not directly run foreground gateway; "
+            "it installs/checks launchd/systemd user manifests used to auto-run gateway."
+        ),
     )
     gateway_service_subparsers = gateway_service_parser.add_subparsers(
         dest="gateway_service_command", required=True
     )
     gateway_service_install_parser = gateway_service_subparsers.add_parser(
         "install",
-        help="Write gateway service manifest for current platform.",
+        help="Install service manifest and optionally enable/start it.",
+        description=(
+            "Write launchd/systemd user manifest that executes `openheron gateway --channels ...`.\n"
+            "Use --enable to start service immediately via launchctl/systemctl."
+        ),
     )
     gateway_service_install_parser.add_argument(
         "--force",
@@ -4080,16 +4107,17 @@ def main(argv: list[str] | None = None) -> None:
     gateway_service_install_parser.add_argument(
         "--channels",
         default="local",
-        help="Comma-separated channels to run in gateway service.",
+        help="Comma-separated channels passed to gateway runtime when service starts (default: local).",
     )
     gateway_service_install_parser.add_argument(
         "--enable",
         action="store_true",
-        help="After writing manifest, run launchctl/systemctl to enable and start service.",
+        help="After writing manifest, run launchctl/systemctl to enable and start service now.",
     )
     gateway_service_status_parser = gateway_service_subparsers.add_parser(
         "status",
-        help="Show gateway service manifest status.",
+        help="Show whether service manifest exists and where it is located.",
+        description="Inspect launchd/systemd user manifest state for openheron gateway service.",
     )
     gateway_service_status_parser.add_argument(
         "--json",

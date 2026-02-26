@@ -35,15 +35,18 @@ python -m openheron.cli -m "Describe what you can do"
 - diagnostics (`openheron doctor`)
 - install summary + next command suggestions
 
-Install command variants:
+Command discovery (`--help` first):
 
 ```bash
-openheron install
-openheron install --init-only
-openheron install --non-interactive --accept-risk
-openheron install --force
-openheron install --install-daemon
-openheron install --install-daemon --daemon-channels local,feishu
+openheron --help
+openheron install --help
+openheron gateway --help
+openheron gateway-service --help
+openheron gateway-service install --help
+openheron provider --help
+openheron channels --help
+openheron cron --help
+openheron token --help
 ```
 
 Install smoke script:
@@ -53,22 +56,27 @@ scripts/install_smoke.sh
 scripts/install_smoke.sh --with-gateway
 ```
 
-Gateway service manifest commands:
+Install examples:
 
 ```bash
-openheron gateway-service install
-openheron gateway-service install --force --channels local,feishu
-openheron gateway-service install --enable
-openheron gateway-service status
+openheron install
+openheron install --init-only
+openheron install --non-interactive --accept-risk
+openheron install --install-daemon --daemon-channels local,feishu
 ```
 
-Gateway background service commands:
+Gateway and gateway-service:
+
+- `openheron gateway`: run gateway runtime itself (foreground or background process management).
+- `openheron gateway-service`: manage OS user-service manifest (launchd/systemd) that runs `openheron gateway`.
+
+Minimal examples:
 
 ```bash
-openheron gateway start --channels local,feishu
+openheron gateway --channels local,feishu --interactive-local
 openheron gateway status
-openheron gateway restart --channels local,feishu
-openheron gateway stop
+openheron gateway-service install --channels local,feishu --enable
+openheron gateway-service status
 ```
 
 Background runtime/log files are stored under:
@@ -154,66 +162,16 @@ python -m openheron.cli -m "Describe what you can do" --user-id local --session-
 # local gateway
 python -m openheron.cli gateway-local
 
-# multi-channel gateway
+# multi-channel gateway runtime
 openheron gateway --channels local,feishu --interactive-local
-export OPENHERON_CHANNELS=feishu
-openheron gateway
-
-# diagnostics and providers
-openheron doctor
-openheron doctor --fix
-openheron doctor --fix-dry-run
-openheron heartbeat status
-openheron token stats
-openheron token stats --provider google --limit 50
-openheron token stats --json
+openheron gateway-service install --channels local,feishu --enable
 openheron gateway-service status
-openheron skills
-openheron provider list
-openheron provider status
-openheron provider login github-copilot
-openheron provider login openai-codex
-```
-
-WhatsApp bridge quick flow:
-
-```bash
-openheron channels login
-openheron channels bridge start
-openheron channels bridge status
-openheron channels bridge stop
-scripts/whatsapp_bridge_e2e.sh smoke
-```
-
-Cron quick flow (jobs run only while gateway is running):
-
-```bash
-openheron cron list
-openheron cron add --name daily --message "daily report" --cron "0 9 * * 1-5" --tz Asia/Shanghai
-openheron cron status
-```
-
-Token usage notes:
-
-- Token stats are recorded per LLM request/response with timestamps.
-- DB path is `~/.openheron/token_usage.db`.
-- `openheron token stats` shows aggregated totals and recent records.
-- `--provider` filters by provider (`google`, `openai`, etc.), `--limit` controls recent rows.
-- Counters depend on provider usage payloads; when a provider does not return usage, that turn is not counted.
-
-## Common Commands
-
-```bash
-# local gateway
-python -m openheron.cli gateway-local
-
-# multi-channel gateway
-openheron gateway --channels local,feishu --interactive-local
-
-# diagnostics
 openheron doctor
-openheron skills
+openheron heartbeat status
+openheron token stats --provider google --limit 50
 ```
+
+For full subcommand options, use the `--help` entries in "Command discovery" above.
 
 ## Core Capabilities
 
