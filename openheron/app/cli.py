@@ -1834,6 +1834,9 @@ def _cmd_routes_lint(*, output_json: bool = False, limit: int = 8) -> int:
         f"conflicts={len(conflicts)}, "
         f"warnings={len(warnings)}"
     )
+    supported_scope_channels = report.get("scopeSupportedChannels", [])
+    if isinstance(supported_scope_channels, list) and supported_scope_channels:
+        _stdout_line("Scope-supported channels: " + ", ".join(str(item) for item in supported_scope_channels))
     if issues:
         _stdout_line("Routing issues:")
         for item in issues:

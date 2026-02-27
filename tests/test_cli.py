@@ -2596,6 +2596,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(code, 0)
         lines = [call.args[0] for call in mocked_print.call_args_list if call.args]
         self.assertTrue(any("warnings=1" in line for line in lines if line.startswith("Routes lint:")))
+        self.assertTrue(any(line.startswith("Scope-supported channels:") for line in lines))
         self.assertTrue(any(line == "Routing warnings:" for line in lines))
 
     def test_cmd_routes_stats_json_output_contains_counts(self) -> None:
