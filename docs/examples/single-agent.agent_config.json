@@ -1,0 +1,27 @@
+{
+  "id": "main",
+  "workspace": "~/.openheron/agents/main/workspace",
+  "agentDir": "~/.openheron/agents/main",
+  "skills": [],
+  "security": {
+    "restrictToWorkspace": false,
+    "allowExec": true,
+    "allowNetwork": true,
+    "execAllowlist": []
+  },
+  "fs": {
+    "workspaceOnly": false,
+    "allowedPaths": [],
+    "denyPaths": [],
+    "readOnlyPaths": []
+  },
+  "tools": {
+    "allow": [],
+    "deny": []
+  },
+  "systemPermissions": {
+    "browser": true,
+    "gui": true,
+    "screenshot": true
+  }
+}

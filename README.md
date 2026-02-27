@@ -141,7 +141,7 @@ pip uninstall openheron
 
 `pip uninstall openheron` only removes the Python package/CLI entrypoint.
 It does not delete user data under `~/.openheron/` (for example
-`config.json`, `runtime.json`, workspace, logs, and runtime state files).
+`global_config.json`, `global_runtime.json`, `agents/<agentId>/config.json`, workspace, logs, and runtime state files).
 
 If you also want to remove personalized/local runtime data, delete it manually:
 
@@ -169,6 +169,8 @@ openheron gateway-service status
 openheron doctor
 openheron heartbeat status
 openheron token stats --provider google --limit 50
+openheron token stats --agent-id main --limit 50
+openheron token stats --provider google --agent-id biz --last-hours 24
 openheron token stats --since 2026-02-26T00:00:00+08:00 --until 2026-02-26T23:59:59+08:00
 openheron token stats --last-hours 24
 ```

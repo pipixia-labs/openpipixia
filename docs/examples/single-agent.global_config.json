@@ -1,0 +1,53 @@
+{
+  "agent": {
+    "workspace": "~/.openheron/agents/main/workspace",
+    "builtinSkillsDir": ""
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "~/.openheron/agents/{agentId}/workspace",
+      "agentDir": "~/.openheron/agents/{agentId}"
+    },
+    "list": [
+      {
+        "id": "main",
+        "default": true
+      }
+    ]
+  },
+  "bindings": [],
+  "providers": {
+    "google": {
+      "enabled": true,
+      "apiKey": "",
+      "model": "gemini-3-flash-preview",
+      "apiBase": "",
+      "extraHeaders": {}
+    },
+    "openai": {
+      "enabled": false,
+      "apiKey": "",
+      "model": "openai/gpt-4.1-mini",
+      "apiBase": "",
+      "extraHeaders": {}
+    }
+  },
+  "session": {
+    "dbUrl": ""
+  },
+  "channels": {
+    "local": {
+      "enabled": true
+    }
+  },
+  "web": {
+    "enabled": true,
+    "search": {
+      "enabled": true,
+      "provider": "brave",
+      "apiKey": "",
+      "maxResults": 5
+    }
+  },
+  "debug": false
+}

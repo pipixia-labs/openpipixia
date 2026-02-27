@@ -11,12 +11,18 @@
 
 优先级规则：
 
-- `config.json` / `runtime.json` 中已配置的字段会覆盖同名环境变量
-- 当 `config.json` 不存在，或文件内容为空对象 `{}` 时，直接使用环境变量
+- `global_config.json` / `global_runtime.json` 中已配置的字段会覆盖同名环境变量
+- 当 `global_config.json` 不存在，或文件内容为空对象 `{}` 时，直接使用环境变量
 
-建议日常只维护 `config.json`，将性能/运行时调优项放在 `runtime.json`，环境变量用于无配置回退或临时排查。
+建议日常只维护 `global_config.json`，将性能/运行时调优项放在 `global_runtime.json`，环境变量用于无配置回退或临时排查。
 
-## `config.json` 关键字段
+配置装配规则（启动时）：
+
+- 先读取 `~/.openheron/global_config.json`
+- 再按 `agents.list[*].id` 读取 `~/.openheron/agents/<agentId>/config.json`
+- agent 文件中的 agent 私有字段会覆盖全局里的同名 agent 字段（如 `workspace/skills/security/fs/tools/systemPermissions`）
+
+## `global_config.json` 关键字段
 
 - `agent.workspace` / `agent.builtinSkillsDir`
 - `agents.defaults / agents.list / bindings`（多智能体路由与每 agent 策略）
@@ -60,11 +66,11 @@ v1 路由键：`channel + accountId + peer`，优先级为：
 - `match.guild / match.team / match.roles` 可作为可选过滤条件参与路由匹配。
   优先级仍保持 `peer > account > channel`，scope 仅在各 tier 内做附加约束，不改变 tier 顺序。
 
-## `runtime.json`（高级）关键字段
+## `global_runtime.json`（高级）关键字段
 
 - `env`（可选）：通用环境变量覆盖映射，支持任意运行时 env 配置项
 
-当你需要配置尚未结构化到 `config.json` 字段中的运行时开关时，在 `runtime.json` 中使用 `env`：
+当你需要配置尚未结构化到 `global_config.json` 字段中的运行时开关时，在 `global_runtime.json` 中使用 `env`：
 
 ```json
 {
@@ -76,9 +82,9 @@ v1 路由键：`channel + accountId + peer`，优先级为：
 }
 ```
 
-默认由 `openheron install --init-only` 生成的 `runtime.json` 已包含常见运行时开关的默认值（如 memory/compaction/mcp probe/debug chars 等），可直接在 `env` 段内修改。
+默认由 `openheron install --init-only` 生成的 `global_runtime.json` 已包含常见运行时开关的默认值（如 memory/compaction/mcp probe/debug chars 等），可直接在 `env` 段内修改。
 
-兼容说明：历史版本中写在 `config.json.env` 的内容仍可读取；后续保存配置时会迁移到 `runtime.json`。
+兼容说明：历史版本中写在 `config.json.env` 的内容仍可读取；后续保存配置时会迁移到 `global_runtime.json`。
 
 ## 常用环境变量
 
@@ -147,9 +153,9 @@ v1 路由键：`channel + accountId + peer`，优先级为：
 - `OPENHERON_GUI_TASK_MAX_NO_PROGRESS_STEPS`
 - `OPENHERON_GUI_TASK_MAX_REPEAT_ACTIONS`
 
-### GUI 多模态 Provider（config.json）
+### GUI 多模态 Provider（global_config.json）
 
-当你希望 GUI 的 grounding/planner 使用 `config.json` 中的多模态模型配置，并允许两者使用不同模型时，配置：
+当你希望 GUI 的 grounding/planner 使用 `global_config.json` 中的多模态模型配置，并允许两者使用不同模型时，配置：
 
 ```json
 {
@@ -179,7 +185,7 @@ v1 路由键：`channel + accountId + peer`，优先级为：
 说明：
 - `gui.groundingProvider` 对应 `OPENHERON_GUI_MODEL/API_KEY/BASE_URL`
 - `gui.plannerProvider` 对应 `OPENHERON_GUI_PLANNER_MODEL/API_KEY/BASE_URL`
-- provider 未配置或 `enabled=false` 时，不会从 `config.json` 注入对应 GUI 环境变量
+- provider 未配置或 `enabled=false` 时，不会从 `global_config.json` 注入对应 GUI 环境变量
 
 ## 不太常见变量速查（含意义）
 
@@ -205,7 +211,7 @@ v1 路由键：`channel + accountId + peer`，优先级为：
 
 | 变量 | 默认值 | 作用 | 何时需要设置 |
 |---|---|---|---|
-| `OPENHERON_MCP_SERVERS_JSON` | `{}` | 直接注入 MCP server 配置 JSON | 临时覆盖 `config.json` 中的 MCP 配置 |
+| `OPENHERON_MCP_SERVERS_JSON` | `{}` | 直接注入 MCP server 配置 JSON | 临时覆盖 `global_config.json` 中的 MCP 配置 |
 | `OPENHERON_MCP_REQUIRED_SERVERS` | 空 | 声明“必须可用”的 MCP 服务名列表 | 某些 MCP 工具是生产强依赖时 |
 | `OPENHERON_MCP_DOCTOR_TIMEOUT_SECONDS` | `5`（范围 1..30） | `doctor` 命令探测 MCP 超时时间 | MCP 服务响应较慢时 |
 | `OPENHERON_MCP_GATEWAY_TIMEOUT_SECONDS` | `5`（范围 1..30） | gateway 启动前探测 required MCP 超时 | 启动阶段经常误判超时时 |
@@ -262,6 +268,12 @@ export OPENHERON_GUI_ALLOW_DANGEROUS_KEYS=false
 ```
 
 ## 配置样例
+
+可直接参考模板：
+
+- `docs/examples/single-agent.global_config.json`
+- `docs/examples/single-agent.agent_config.json`
+- `docs/examples/multi-agent.v1.config.json`
 
 ```json
 {

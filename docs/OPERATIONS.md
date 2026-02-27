@@ -163,7 +163,8 @@ openheron install --init-only
 
 - `~/.openheron/global_config.json`
 - `~/.openheron/global_runtime.json`（高级运行时 env 调优配置）
-- `~/.openheron/workspace`
+- `~/.openheron/agents/main/config.json`（main agent 私有配置）
+- `~/.openheron/agents/main/`（`workspace/`、`sessions/`、`memory/`）
 
 ### install 常见问题
 
@@ -387,6 +388,8 @@ openheron heartbeat status
 openheron heartbeat status --json
 openheron token stats
 openheron token stats --provider google --limit 50
+openheron token stats --agent-id main --limit 50
+openheron token stats --provider google --agent-id biz --last-hours 24
 openheron token stats --json
 openheron gateway-service install
 openheron gateway-service status
@@ -477,6 +480,8 @@ openheron cron status
 ```bash
 openheron token stats
 openheron token stats --provider google --limit 50
+openheron token stats --agent-id main --limit 50
+openheron token stats --provider google --agent-id biz --last-hours 24
 openheron token stats --provider openai --json
 ```
 
@@ -484,6 +489,7 @@ openheron token stats --provider openai --json
 
 - `token stats` 默认输出汇总统计 + 最近记录。
 - `--provider` 可按 provider 过滤（如 `google`、`openai`）。
+- `--agent-id` 可按 agent 过滤（如 `main`、`biz`）。
 - `--limit` 控制最近记录返回条数（默认 20）。
 - `--json` 输出机器可读 JSON，适合脚本/监控接入。
 - 是否能统计到该次调用，取决于 provider 是否返回 usage 信息；无 usage 的调用不会计入。

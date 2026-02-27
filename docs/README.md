@@ -7,6 +7,8 @@
 - [OPERATIONS.md](./OPERATIONS.md): 运行方式、网关模式、WhatsApp Bridge、Cron、测试
 - [CONFIGURATION.md](./CONFIGURATION.md): 配置模型、环境变量、配置样例、平台说明
 - [MCP_SECURITY.md](./MCP_SECURITY.md): MCP 接入和安全策略
+- [examples/single-agent.global_config.json](./examples/single-agent.global_config.json): 单智能体全局配置模板（`~/.openheron/global_config.json`）
+- [examples/single-agent.agent_config.json](./examples/single-agent.agent_config.json): 单智能体 agent 私有配置模板（`~/.openheron/agents/main/config.json`）
 - [examples/multi-agent.v1.config.json](./examples/multi-agent.v1.config.json): 多智能体 v1 可直接改造的配置模板
 - [MULTI_AGENT_MIGRATION.md](./MULTI_AGENT_MIGRATION.md): 单 agent 到多 agent（v1）的迁移步骤与验证清单
 - [MULTI_AGENT_RELEASE_CHECKLIST.md](./MULTI_AGENT_RELEASE_CHECKLIST.md): 多智能体发布前检查清单（routes lint/stats、doctor、权限、通道、auth）
