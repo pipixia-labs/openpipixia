@@ -15,6 +15,7 @@ from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 
 from ..core.logging_utils import debug_logging_enabled, emit_debug
+from .agent_runtime import get_current_agent_runtime
 from .token_usage_store import extract_usage_tokens, write_token_usage_event
 
 _DEFAULT_MAX_TEXT_CHARS = 2000
@@ -203,11 +204,22 @@ def _request_meta_from_context(callback_context: CallbackContext, llm_request: L
             provider = "google"
         elif model_l.startswith("openai/") or model_l.startswith("gpt-") or model_l.startswith("o1-"):
             provider = "openai"
+    runtime = get_current_agent_runtime()
+    agent_id = ""
+    if runtime is not None:
+        agent_id = str(runtime.agent_id or "").strip()
+    if not agent_id:
+        raw_session_id = str(getattr(getattr(callback_context, "session", None), "id", "") or "")
+        if raw_session_id.startswith("agent:"):
+            parts = raw_session_id.split(":")
+            if len(parts) >= 2:
+                agent_id = parts[1].strip()
     return {
         "request_at_ms": request_at_ms,
         "request_at": request_at,
         "provider": provider,
         "model": model,
+        "agent_id": agent_id,
         "session_id": str(getattr(getattr(callback_context, "session", None), "id", "") or ""),
         "invocation_id": str(getattr(callback_context, "invocation_id", "") or ""),
     }
@@ -235,6 +247,7 @@ def _record_token_usage_if_possible(callback_context: CallbackContext, llm_respo
         "response_at_ms": response_at_ms,
         "provider": request_meta.get("provider", ""),
         "model": request_meta.get("model", ""),
+        "agent_id": request_meta.get("agent_id", ""),
         "session_id": request_meta.get("session_id", ""),
         "invocation_id": invocation_id,
         "raw_usage": raw_usage,

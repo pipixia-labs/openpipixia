@@ -4378,6 +4378,7 @@ def _cmd_token_stats(
     output_json: bool,
     limit: int,
     provider: str | None,
+    agent_id: str | None,
     since: str | None,
     until: str | None,
     last_hours: int | None,
@@ -4403,12 +4404,14 @@ def _cmd_token_stats(
     stats = read_token_usage_stats(
         limit=limit,
         provider=provider or None,
+        agent_id=(str(agent_id).strip() or None) if agent_id is not None else None,
         since_ms=since_ms,
         until_ms=until_ms,
     )
     payload: dict[str, Any] = {
         "dbPath": str(token_usage_db_path()),
         "provider": provider or "",
+        "agentId": str(agent_id or "").strip(),
         "since": since or "",
         "until": until or "",
         "lastHours": int(last_hours) if last_hours is not None else None,
@@ -4445,6 +4448,7 @@ def _cmd_token_stats(
             f"{row.get('response_at', '-')}"
             f" provider={row.get('provider', '-')}"
             f" model={row.get('model', '-')}"
+            f" agent={row.get('agent_id', '-')}"
             f" session={row.get('session_id', '-')}"
             f" req={row.get('request_tokens', 0)}"
             f" resp={row.get('response_tokens', 0)}"
@@ -4462,6 +4466,7 @@ def _dispatch_token_command(args: argparse.Namespace, parser: argparse.ArgumentP
             output_json=args.output_json,
             limit=args.limit,
             provider=args.provider,
+            agent_id=args.agent_id,
             since=args.since,
             until=args.until,
             last_hours=args.last_hours,
@@ -4878,6 +4883,11 @@ def main(argv: list[str] | None = None) -> None:
         "--provider",
         default=None,
         help="Optional provider filter, e.g. google/openai.",
+    )
+    token_stats_parser.add_argument(
+        "--agent-id",
+        default=None,
+        help="Optional agent id filter, e.g. main/biz.",
     )
     token_stats_parser.add_argument(
         "--since",

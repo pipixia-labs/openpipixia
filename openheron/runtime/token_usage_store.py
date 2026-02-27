@@ -41,6 +41,7 @@ def ensure_token_usage_schema(db_path: Path | None = None) -> None:
                 response_at_ms INTEGER NOT NULL,
                 provider TEXT,
                 model TEXT,
+                agent_id TEXT,
                 session_id TEXT,
                 invocation_id TEXT,
                 request_tokens INTEGER NOT NULL,
@@ -61,6 +62,17 @@ def ensure_token_usage_schema(db_path: Path | None = None) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_llm_token_usage_events_provider "
             "ON llm_token_usage_events(provider)"
+        )
+        # Backward-compatible schema migration for existing databases.
+        columns = {
+            str(row["name"]).strip().lower()
+            for row in conn.execute("PRAGMA table_info(llm_token_usage_events)").fetchall()
+        }
+        if "agent_id" not in columns:
+            conn.execute("ALTER TABLE llm_token_usage_events ADD COLUMN agent_id TEXT")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_llm_token_usage_events_agent_id "
+            "ON llm_token_usage_events(agent_id)"
         )
 
 
@@ -176,6 +188,7 @@ def write_token_usage_event(event: dict[str, Any], db_path: Path | None = None) 
                 response_at_ms,
                 provider,
                 model,
+                agent_id,
                 session_id,
                 invocation_id,
                 request_tokens,
@@ -186,7 +199,7 @@ def write_token_usage_event(event: dict[str, Any], db_path: Path | None = None) 
                 response_image_tokens,
                 total_tokens,
                 raw_usage_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(event.get("request_at", "")),
@@ -195,6 +208,7 @@ def write_token_usage_event(event: dict[str, Any], db_path: Path | None = None) 
                 _safe_int(event.get("response_at_ms"), default=int(time.time() * 1000)),
                 str(event.get("provider", "")),
                 str(event.get("model", "")),
+                str(event.get("agent_id", "")),
                 str(event.get("session_id", "")),
                 str(event.get("invocation_id", "")),
                 _safe_int(event.get("request_tokens")),
@@ -225,6 +239,7 @@ def read_token_usage_stats(
     *,
     limit: int = 20,
     provider: str | None = None,
+    agent_id: str | None = None,
     since_ms: int | None = None,
     until_ms: int | None = None,
     db_path: Path | None = None,
@@ -237,6 +252,9 @@ def read_token_usage_stats(
         if provider:
             conditions.append("provider = ?")
             params.append(provider)
+        if agent_id:
+            conditions.append("agent_id = ?")
+            params.append(agent_id)
         if since_ms is not None:
             conditions.append("response_at_ms >= ?")
             params.append(int(since_ms))
@@ -266,7 +284,7 @@ def read_token_usage_stats(
 
         recent_rows = conn.execute(
             (
-                "SELECT response_at, provider, model, session_id, invocation_id, "
+                "SELECT response_at, provider, model, agent_id, session_id, invocation_id, "
                 "request_tokens, response_tokens, request_text_tokens, response_text_tokens, "
                 "request_image_tokens, response_image_tokens, total_tokens "
                 "FROM llm_token_usage_events"

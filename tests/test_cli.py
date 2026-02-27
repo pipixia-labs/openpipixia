@@ -3207,6 +3207,8 @@ class CLITests(unittest.TestCase):
                             "5",
                             "--provider",
                             "google",
+                            "--agent-id",
+                            "main",
                             "--since",
                             "2026-02-26T00:00:00+08:00",
                             "--until",
@@ -3218,6 +3220,7 @@ class CLITests(unittest.TestCase):
                     output_json=True,
                     limit=5,
                     provider="google",
+                    agent_id="main",
                     since="2026-02-26T00:00:00+08:00",
                     until="2026-02-26T23:59:59+08:00",
                     last_hours=None,
@@ -3407,6 +3410,7 @@ class CLITests(unittest.TestCase):
                     "response_at": "2026-02-26T10:00:01+00:00",
                     "provider": "google",
                     "model": "gemini-2.5-pro",
+                    "agent_id": "main",
                     "session_id": "s1",
                     "invocation_id": "inv1",
                     "request_tokens": 20,
@@ -3427,6 +3431,7 @@ class CLITests(unittest.TestCase):
                         output_json=False,
                         limit=10,
                         provider=None,
+                        agent_id=None,
                         since=None,
                         until=None,
                         last_hours=24,
@@ -3444,6 +3449,7 @@ class CLITests(unittest.TestCase):
         self.assertTrue(any("requests=2" in line for line in lines))
         self.assertTrue(any("Token DB: /tmp/token_usage.db" in line for line in lines))
         self.assertTrue(any("provider=google" in line for line in lines))
+        self.assertTrue(any("agent=main" in line for line in lines))
         self.assertTrue(any("last_hours=24" in line for line in lines))
 
     def test_cmd_token_stats_outputs_json(self) -> None:
@@ -3467,6 +3473,7 @@ class CLITests(unittest.TestCase):
                         output_json=True,
                         limit=20,
                         provider="google",
+                        agent_id="main",
                         since="2026-02-26T00:00:00+08:00",
                         until="2026-02-26T23:59:59+08:00",
                         last_hours=None,
@@ -3475,6 +3482,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(code, 0)
         payload = json.loads(mocked_info.call_args[0][0])
         self.assertEqual(payload["provider"], "google")
+        self.assertEqual(payload["agentId"], "main")
         self.assertEqual(payload["requests"], 0)
         self.assertEqual(payload["dbPath"], "/tmp/token_usage.db")
         self.assertEqual(payload["since"], "2026-02-26T00:00:00+08:00")
@@ -3488,6 +3496,7 @@ class CLITests(unittest.TestCase):
                 output_json=False,
                 limit=20,
                 provider=None,
+                agent_id=None,
                 since="2026-02-27T00:00:00+08:00",
                 until="2026-02-26T23:59:59+08:00",
                 last_hours=None,
