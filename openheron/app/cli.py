@@ -72,7 +72,11 @@ from ..runtime.cron_service import CronService
 from ..runtime.cron_schedule_parser import parse_schedule_input
 from ..runtime.heartbeat_status_store import read_heartbeat_status_snapshot
 from ..runtime.route_stats_store import read_route_stats_snapshot
-from ..runtime.route_capabilities import channel_supports_scope_metadata, list_scope_metadata_supported_channels
+from ..runtime.route_capabilities import (
+    channel_supports_scope_metadata,
+    get_scope_capability,
+    list_scope_metadata_supported_channels,
+)
 from ..runtime.token_usage_store import parse_time_filter_to_epoch_ms, read_token_usage_stats, token_usage_db_path
 from ..runtime.gateway_service import (
     detect_service_manager,
@@ -1438,9 +1442,10 @@ def _routes_lint_scope_warnings(config: dict[str, Any]) -> list[str]:
         if not has_scope:
             continue
         if not channel_supports_scope_metadata(channel):
+            capability = get_scope_capability(channel)
             warnings.append(
                 f"bindings[{idx}] uses scope fields on channel '{channel}', "
-                "but this channel may not emit stable guild/team/roles metadata yet."
+                f"but capability={capability.level} ({capability.reason})."
             )
     return warnings
 

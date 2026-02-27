@@ -23,6 +23,7 @@
 - 需要稳定 scope 路由时，优先在 `discord` 场景使用，并做实机验证。
 - 对于不提供 scope 的 channel，不建议配置 `match.guild/team/roles`，避免“看起来可配但永远命不中”。
 - 可通过 `openheron routes lint --json` 观察 `warnings` 字段中的可达性提示。
+  `warnings` 会附带 `capability` 与 `reason`，用于区分“协议不支持”与“仅 best-effort”。
 
 ## 4. 验证命令
 

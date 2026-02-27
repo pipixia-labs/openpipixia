@@ -2561,6 +2561,7 @@ class CLITests(unittest.TestCase):
         payload = json.loads(mocked_print.call_args.args[0])
         self.assertEqual(len(payload["warnings"]), 1)
         self.assertIn("channel 'telegram'", payload["warnings"][0])
+        self.assertIn("capability=unsupported", payload["warnings"][0])
         self.assertTrue(any("scope matching is required" in item for item in payload["suggestions"]))
 
     def test_cmd_routes_lint_text_output_reports_conflicts(self) -> None:
