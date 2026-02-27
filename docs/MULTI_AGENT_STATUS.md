@@ -36,8 +36,9 @@
 - Gateway 出站 metadata 增加 `openheron_route`
 - `doctor` 新增多智能体校验（默认 agent、重复 id、binding 指向、channel 必填）
 - `doctor` 新增 `multiAgent.summary` 与 `multiAgent.routePreview`
+- `doctor` 新增 `multiAgent.warnings` 与 `multiAgent.scopeSupportedChannels`
 - `doctor` 文本模式冲突提示与排查指引
-- `routes lint` 独立命令（含 `--json/--limit` 与建议动作输出）
+- `routes lint` 独立命令（含 `--json/--limit`、warnings、建议动作、`scopeSupportedChannels`）
 - `guild/team/roles` 配置校验 + `routeScopeCount` 摘要统计 + 运行时匹配过滤
 - `routes stats` 独立命令（路由命中统计与审计，含 `--json/--limit/--window-hours`，文本模式 Top 排序 + Recent samples 预览）
 
@@ -53,7 +54,7 @@
 ### 1.7 上线演练脚本
 
 - `scripts/multi_agent_e2e.sh`：聚合 `doctor/routes lint/routes stats` 的一键演练脚本
-- 支持 `--with-gateway-probe`（尝试产生本地流量）与 `--strict-routes-stats`（无快照即失败）
+- 支持 `--with-gateway-probe`（尝试产生本地流量）、`--strict-routes-stats`（无快照即失败）、`--strict-warnings`（warnings 即失败）
 
 ## 2. 待推进（建议优先级）
 
@@ -62,7 +63,7 @@
 ## 3. 已验证命令（最近回归）
 
 ```bash
-./.venv/bin/python -m pytest -q tests/test_agent_routing.py tests/test_bus_gateway.py tests/test_whatsapp_channel.py tests/test_telegram_channel.py tests/test_discord_channel.py tests/test_feishu_channel.py tests/test_cli.py
+./.venv/bin/python -m pytest -q tests/test_route_capabilities.py tests/test_agent_routing.py tests/test_bus_gateway.py tests/test_whatsapp_channel.py tests/test_telegram_channel.py tests/test_discord_channel.py tests/test_feishu_channel.py tests/test_cli.py
 ```
 
 最近结果：`216 passed`。
