@@ -92,7 +92,7 @@ Install output highlights:
 
 - `Install summary: provider=..., channels=...`: active provider/channel selection
 - `Install summary: missing=[...]`: key fields still missing for enabled components
-- `Install summary: fixes=[...]`: direct config fix hints (`~/.openheron/config.json`)
+- `Install summary: fixes=[...]`: direct config fix hints (`~/.openheron/global_config.json`)
 - `Install summary: next[1]/next[2]`: recommended follow-up commands
 - `Install prereq: ...`: local prerequisite checks (`.venv`, `adk`, optional `questionary/rich`)
   (`doctor` text mode renders them as `Install prereq [ok]` / `Install prereq [warn]`)
@@ -109,8 +109,9 @@ openheron install --init-only
 
 `openheron install --init-only` initializes:
 
-- `~/.openheron/config.json`
-- `~/.openheron/runtime.json`
+- `~/.openheron/global_config.json`
+- `~/.openheron/global_runtime.json`
+- `~/.openheron/agents/<agentId>/config.json` (per-agent runtime policy/config)
 - `~/.openheron/agents/main/` (including `workspace/`, `sessions/`, `memory/`)
 
 Use `openheron install` for the full guided setup (checks + summary + suggestions),

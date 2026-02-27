@@ -110,7 +110,7 @@ openheron gateway-service status --json
 - `Install summary: missing=[...]`  
   当前启用配置里，网关启动前建议补齐的关键字段。
 - `Install summary: fixes=[...]`  
-  对应 `missing` 的直接修复建议（告诉你去 `~/.openheron/config.json` 填什么）。
+  对应 `missing` 的直接修复建议（告诉你去 `~/.openheron/global_config.json` 填什么）。
 - `Install summary: next[1]` / `next[2]`  
   推荐下一步命令，一般是先 `openheron doctor` 再启动 `openheron gateway ...`。
 - `Install prereq: ...`  
@@ -161,18 +161,18 @@ openheron install --init-only
 
 初始化后会生成：
 
-- `~/.openheron/config.json`
-- `~/.openheron/runtime.json`（高级运行时 env 调优配置）
+- `~/.openheron/global_config.json`
+- `~/.openheron/global_runtime.json`（高级运行时 env 调优配置）
 - `~/.openheron/workspace`
 
 ### install 常见问题
 
 - `Missing ... API key`  
-  打开 `~/.openheron/config.json`，给启用 provider 填 `apiKey`，再运行 `openheron doctor`。
+  打开 `~/.openheron/global_config.json`，给启用 provider 填 `apiKey`，再运行 `openheron doctor`。
   如果本地环境变量已配置，也可先运行 `openheron doctor --fix` 让系统自动回填缺失项。
 
 - `channels....` 凭证字段缺失（例如 feishu/telegram/discord/dingtalk/slack/whatsapp/mochat/email/qq）  
-  在 `~/.openheron/config.json` 的 `channels` 段补齐对应字段，再运行 `openheron doctor`。
+  在 `~/.openheron/global_config.json` 的 `channels` 段补齐对应字段，再运行 `openheron doctor`。
   如果不确定具体字段，直接看 install 输出里的 `Install summary: fixes=[...]`。
 
 - `MCP server ... health check failed`  

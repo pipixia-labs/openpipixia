@@ -4,8 +4,9 @@
 
 支持三种配置来源：
 
-- 基础配置（推荐）：`~/.openheron/config.json`
-- 高级运行配置：`~/.openheron/runtime.json`
+- 基础全局配置（推荐）：`~/.openheron/global_config.json`
+- 高级全局运行配置：`~/.openheron/global_runtime.json`
+- 每个 agent 配置：`~/.openheron/agents/<agentId>/config.json`
 - 环境变量（在未配置时作为回退）
 
 优先级规则：

@@ -712,6 +712,45 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(parsed["filesystem"]["enabled"])
         self.assertEqual(parsed["filesystem"]["command"], "npx")
 
+    def test_save_config_splits_agent_payload_and_load_reassembles(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "global_config.json"
+            cfg = default_config()
+            cfg["agents"]["list"] = [
+                {
+                    "id": "main",
+                    "default": True,
+                    "workspace": str(Path(tmp) / "agents" / "main" / "workspace"),
+                    "agentDir": str(Path(tmp) / "agents" / "main"),
+                    "skills": ["core"],
+                },
+                {
+                    "id": "biz",
+                    "default": False,
+                    "workspace": str(Path(tmp) / "agents" / "biz" / "workspace"),
+                    "agentDir": str(Path(tmp) / "agents" / "biz"),
+                    "skills": ["sales"],
+                    "tools": {"deny": ["exec"]},
+                },
+            ]
+            save_config(cfg, path)
+
+            raw_global = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(raw_global["agents"]["list"][0], {"id": "main", "default": True})
+            self.assertEqual(raw_global["agents"]["list"][1], {"id": "biz", "default": False})
+
+            main_agent_cfg = json.loads((Path(tmp) / "agents" / "main" / "config.json").read_text(encoding="utf-8"))
+            biz_agent_cfg = json.loads((Path(tmp) / "agents" / "biz" / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual(main_agent_cfg["id"], "main")
+            self.assertEqual(main_agent_cfg["skills"], ["core"])
+            self.assertEqual(biz_agent_cfg["id"], "biz")
+            self.assertEqual(biz_agent_cfg["tools"]["deny"], ["exec"])
+
+            loaded = load_config(path)
+            self.assertEqual(loaded["agents"]["list"][0]["workspace"], str(Path(tmp) / "agents" / "main" / "workspace"))
+            self.assertEqual(loaded["agents"]["list"][1]["skills"], ["sales"])
+            self.assertEqual(loaded["agents"]["list"][1]["tools"]["deny"], ["exec"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -117,6 +117,17 @@ _CHANNEL_DEFAULT_VALUE_FIELDS: tuple[tuple[str, str, str, Any], ...] = (
 )
 
 _EXTENSIBLE_MAP_KEYS: frozenset[str] = frozenset({"env"})
+_AGENT_SCOPED_KEYS: frozenset[str] = frozenset(
+    {
+        "workspace",
+        "agentDir",
+        "skills",
+        "security",
+        "fs",
+        "tools",
+        "systemPermissions",
+    }
+)
 
 
 def get_data_dir() -> Path:
@@ -126,12 +137,31 @@ def get_data_dir() -> Path:
 
 def get_config_path() -> Path:
     """Return the default config file path."""
-    return get_data_dir() / "config.json"
+    return get_data_dir() / "global_config.json"
 
 
 def get_runtime_config_path() -> Path:
     """Return the default runtime config path for advanced env overrides."""
+    return get_data_dir() / "global_runtime.json"
+
+
+def _legacy_config_path() -> Path:
+    """Return legacy global config file path for backward read compatibility."""
+    return get_data_dir() / "config.json"
+
+
+def _legacy_runtime_config_path() -> Path:
+    """Return legacy runtime config file path for backward read compatibility."""
     return get_data_dir() / "runtime.json"
+
+
+def _resolve_read_path(preferred: Path, legacy: Path) -> Path:
+    """Prefer new path and fallback to legacy path when present."""
+    if preferred.exists():
+        return preferred
+    if legacy.exists():
+        return legacy
+    return preferred
 
 
 def get_agent_home_path(agent_id: str = "main") -> Path:
@@ -429,7 +459,8 @@ def normalize_runtime_config(raw: dict[str, Any] | None) -> dict[str, Any]:
 
 def load_config(config_path: Path | None = None) -> dict[str, Any]:
     """Load config from disk. Missing/invalid config falls back to defaults."""
-    path = config_path or get_config_path()
+    preferred = config_path or get_config_path()
+    path = _resolve_read_path(preferred, _legacy_config_path()) if config_path is None else preferred
     if not path.exists():
         return default_config()
 
@@ -442,12 +473,13 @@ def load_config(config_path: Path | None = None) -> dict[str, Any]:
     if not isinstance(data, dict):
         logger.debug("Warning: invalid config root at {}; expected JSON object", path)
         return default_config()
-    return normalize_config(data)
+    return _merge_agent_config_files(normalize_config(data), config_root=path.parent)
 
 
 def load_runtime_config(runtime_config_path: Path | None = None) -> dict[str, Any]:
     """Load runtime config from disk. Missing/invalid config falls back to defaults."""
-    path = runtime_config_path or get_runtime_config_path()
+    preferred = runtime_config_path or get_runtime_config_path()
+    path = _resolve_read_path(preferred, _legacy_runtime_config_path()) if runtime_config_path is None else preferred
     if not path.exists():
         return default_runtime_config()
 
@@ -465,7 +497,120 @@ def load_runtime_config(runtime_config_path: Path | None = None) -> dict[str, An
 
 def _runtime_config_path_for_config_path(config_path: Path) -> Path:
     """Resolve sibling runtime config path for one config file path."""
+    if config_path.name == "global_config.json":
+        return config_path.with_name("global_runtime.json")
     return config_path.with_name("runtime.json")
+
+
+def _resolve_agent_config_path(*, agent_id: str, config_root: Path) -> Path:
+    """Resolve one agent config file path under ``<configRoot>/agents/<id>/config.json``."""
+    normalized_id = str(agent_id).strip() or "main"
+    root = (config_root / "agents" / normalized_id).expanduser().resolve(strict=False)
+    return (root / "config.json").resolve(strict=False)
+
+
+def _merge_agent_config_files(cfg: dict[str, Any], *, config_root: Path) -> dict[str, Any]:
+    """Load and merge per-agent config files into one normalized config payload."""
+    agents = cfg.get("agents")
+    if not isinstance(agents, dict):
+        return cfg
+    entries = agents.get("list")
+    if not isinstance(entries, list):
+        return cfg
+
+    merged_entries: list[Any] = []
+    for raw_entry in entries:
+        if not isinstance(raw_entry, dict):
+            merged_entries.append(raw_entry)
+            continue
+        entry = deepcopy(raw_entry)
+        agent_id = str(entry.get("id", "")).strip() or "main"
+        agent_cfg_path = _resolve_agent_config_path(agent_id=agent_id, config_root=config_root)
+        if not agent_cfg_path.exists():
+            merged_entries.append(entry)
+            continue
+        try:
+            payload = json.loads(agent_cfg_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.debug("Warning: failed to load agent config at {}: {}", agent_cfg_path, exc)
+            merged_entries.append(entry)
+            continue
+        if not isinstance(payload, dict):
+            merged_entries.append(entry)
+            continue
+        payload_id = str(payload.get("id", "")).strip()
+        if payload_id and payload_id != agent_id:
+            logger.debug(
+                "Warning: agent config id mismatch at {} (entry id={}, payload id={}); ignore payload id",
+                agent_cfg_path,
+                agent_id,
+                payload_id,
+            )
+        for key in _AGENT_SCOPED_KEYS:
+            if key in payload:
+                entry[key] = payload[key]
+        merged_entries.append(entry)
+
+    out = deepcopy(cfg)
+    out_agents = out.get("agents")
+    if isinstance(out_agents, dict):
+        out_agents["list"] = merged_entries
+    return out
+
+
+def _extract_agent_payload(entry: dict[str, Any]) -> dict[str, Any]:
+    """Extract per-agent persisted payload for ``agents/<id>/config.json``."""
+    payload: dict[str, Any] = {"id": str(entry.get("id", "")).strip() or "main"}
+    for key in _AGENT_SCOPED_KEYS:
+        if key in entry:
+            payload[key] = deepcopy(entry[key])
+    return payload
+
+
+def _strip_agent_scoped_fields_from_global(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Strip agent-local fields from global config before writing global file."""
+    out = deepcopy(cfg)
+    agents = out.get("agents")
+    if not isinstance(agents, dict):
+        return out
+    entries = agents.get("list")
+    if not isinstance(entries, list):
+        return out
+    stripped: list[Any] = []
+    for item in entries:
+        if not isinstance(item, dict):
+            stripped.append(item)
+            continue
+        stripped.append(
+            {
+                "id": str(item.get("id", "")).strip() or "main",
+                "default": bool(item.get("default", False)),
+            }
+        )
+    agents["list"] = stripped
+    return out
+
+
+def _save_agent_configs(cfg: dict[str, Any], *, config_root: Path) -> None:
+    """Persist per-agent payloads into ``~/.openheron/agents/<id>/config.json``."""
+    agents = cfg.get("agents")
+    if not isinstance(agents, dict):
+        return
+    entries = agents.get("list")
+    if not isinstance(entries, list):
+        return
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        agent_id = str(item.get("id", "")).strip() or "main"
+        path = _resolve_agent_config_path(agent_id=agent_id, config_root=config_root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = _extract_agent_payload(item)
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
 
 
 def save_config(config: dict[str, Any], config_path: Path | None = None) -> Path:
@@ -475,7 +620,9 @@ def save_config(config: dict[str, Any], config_path: Path | None = None) -> Path
     legacy_env = config_to_write.pop("env", None)
     path.parent.mkdir(parents=True, exist_ok=True)
     normalized = normalize_config(config_to_write)
-    path.write_text(json.dumps(normalized, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _save_agent_configs(normalized, config_root=path.parent)
+    global_normalized = _strip_agent_scoped_fields_from_global(normalized)
+    path.write_text(json.dumps(global_normalized, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     # Best effort: keep local secrets private on POSIX systems.
     try:
@@ -914,7 +1061,8 @@ def apply_config_to_env(
 
 def bootstrap_env_from_config(config_path: Path | None = None) -> dict[str, Any] | None:
     """Load config file (if present) and apply values to process env."""
-    path = config_path or get_config_path()
+    preferred = config_path or get_config_path()
+    path = _resolve_read_path(preferred, _legacy_config_path()) if config_path is None else preferred
     if not path.exists():
         return None
 
@@ -927,7 +1075,7 @@ def bootstrap_env_from_config(config_path: Path | None = None) -> dict[str, Any]
     if not isinstance(raw, dict) or not raw:
         return None
 
-    cfg = normalize_config(raw)
+    cfg = _merge_agent_config_files(normalize_config(raw), config_root=path.parent)
     runtime_path = _runtime_config_path_for_config_path(path)
     runtime_overrides = _env_overrides(load_runtime_config(runtime_config_path=runtime_path))
     legacy_overrides = _env_overrides_from_mapping(raw.get("env"))

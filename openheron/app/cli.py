@@ -1515,7 +1515,7 @@ def _cmd_doctor(
         if provider_key_env and not os.getenv(provider_key_env, "").strip():
             issues.append(
                 f"Missing {provider_name} API key. Set `providers.{provider_name}.apiKey` "
-                f"in ~/.openheron/config.json or export {provider_key_env}."
+                f"in ~/.openheron/global_config.json or export {provider_key_env}."
             )
         oauth_issue, provider_oauth = _provider_oauth_health(provider_name)
         if oauth_issue:
@@ -3620,7 +3620,7 @@ def _cmd_install(
 ) -> int:
     """Run a minimal installation flow for first-time local setup."""
     config_path = get_config_path()
-    runtime_config_path = config_path.with_name("runtime.json")
+    runtime_config_path = get_runtime_config_path()
     mode = "init-only" if init_only else ("non-interactive" if non_interactive else "interactive")
     _render_install_welcome_with_rich(
         mode=mode,

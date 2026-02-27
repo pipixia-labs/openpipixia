@@ -134,7 +134,7 @@ openheron install --init-only
 
 会生成：
 
-- `~/.openheron/config.json`
+- `~/.openheron/global_config.json`
 - `~/.openheron/workspace`
 
 ### 6.2 常用运行方式

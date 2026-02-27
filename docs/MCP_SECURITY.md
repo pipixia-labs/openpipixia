@@ -17,7 +17,7 @@
 
 ### 最小验证流程
 
-1. 在 `~/.openheron/config.json` 配置 `tools.mcpServers`
+1. 在 `~/.openheron/global_config.json` 配置 `tools.mcpServers`
 2. 执行 `openheron doctor` 查看服务健康状态与工具列表
 3. 启动 `openheron gateway`
 4. 在对话中调用 MCP 工具（例如 `mcp_filesystem_...`）

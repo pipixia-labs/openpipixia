@@ -3095,11 +3095,11 @@ class CLITests(unittest.TestCase):
                 code = cli._cmd_install_init_setup(force=False)
 
             self.assertEqual(code, 0)
-            config_path = Path(tmp) / ".openheron" / "config.json"
-            runtime_config_path = Path(tmp) / ".openheron" / "runtime.json"
+            config_path = Path(tmp) / ".openheron" / "global_config.json"
+            runtime_config_path = Path(tmp) / ".openheron" / "global_runtime.json"
             self.assertTrue(config_path.exists())
             self.assertTrue(runtime_config_path.exists())
-            data = json.loads(config_path.read_text(encoding="utf-8"))
+            data = cli.load_config(config_path=config_path)
             workspace = Path(data["agent"]["workspace"]).expanduser()
             agent_dir = Path(data["agents"]["list"][0]["agentDir"]).expanduser()
             self.assertTrue(agent_dir.exists())
