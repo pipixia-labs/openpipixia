@@ -111,7 +111,7 @@ openheron install --init-only
 
 - `~/.openheron/config.json`
 - `~/.openheron/runtime.json`
-- `~/.openheron/workspace`
+- `~/.openheron/agents/main/` (including `workspace/`, `sessions/`, `memory/`)
 
 Use `openheron install` for the full guided setup (checks + summary + suggestions),
 and use `openheron install --init-only` when you only want minimal file initialization.

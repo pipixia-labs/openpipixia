@@ -191,7 +191,7 @@ v1 路由键：`channel + accountId + peer`，优先级为：
 | `OPENHERON_SESSION_DB_URL` | 自动生成 SQLite 路径 | 覆盖会话数据库地址 | 需要把 session 存到自定义数据库时 |
 | `OPENHERON_MEMORY_ENABLED` | `1` | 是否启用 ADK memory 写入链路 | 临时排查 memory 行为时可设为 `0` |
 | `OPENHERON_MEMORY_BACKEND` | `markdown` | 选择 memory 后端：`markdown`（默认）或 `in_memory`（调试） | 仅在本地调试临时关闭落盘时使用 `in_memory` |
-| `OPENHERON_MEMORY_MARKDOWN_DIR` | `~/.openheron/workspace/memory` | Markdown memory 根目录 | 需要把记忆落盘到指定目录时 |
+| `OPENHERON_MEMORY_MARKDOWN_DIR` | 空（自动按当前 agent 解析为 `<agentDir>/memory`） | Markdown memory 根目录 | 需要把记忆落盘到指定目录时 |
 | `OPENHERON_COMPACTION_ENABLED` | `1` | 是否启用 ADK events compaction | 需要原样保留完整事件流时可关掉 |
 | `OPENHERON_COMPACTION_INTERVAL` | `8` | 每隔多少事件触发一次 compaction 检查（最小为 1） | 长对话频繁撑窗口时可适当调小 |
 | `OPENHERON_COMPACTION_OVERLAP` | `1` | 相邻压缩片段保留的重叠事件数 | 希望压缩后上下文衔接更稳时可调大 |
@@ -265,13 +265,13 @@ export OPENHERON_GUI_ALLOW_DANGEROUS_KEYS=false
 ```json
 {
   "agent": {
-    "workspace": "~/.openheron/workspace",
+    "workspace": "~/.openheron/agents/main/workspace",
     "builtinSkillsDir": ""
   },
   "agents": {
     "defaults": {
-      "workspace": "~/.openheron/workspace",
-      "agentDir": "~/.openheron/agents/main/agent",
+      "workspace": "~/.openheron/agents/{agentId}/workspace",
+      "agentDir": "~/.openheron/agents/{agentId}",
       "security": {
         "restrictToWorkspace": false,
         "allowExec": true,
@@ -298,14 +298,14 @@ export OPENHERON_GUI_ALLOW_DANGEROUS_KEYS=false
       {
         "id": "main",
         "default": true,
-        "workspace": "~/.openheron/workspace/main",
-        "agentDir": "~/.openheron/agents/main/agent",
+        "workspace": "~/.openheron/agents/main/workspace",
+        "agentDir": "~/.openheron/agents/main",
         "skills": []
       },
       {
         "id": "biz",
-        "workspace": "~/.openheron/workspace/biz",
-        "agentDir": "~/.openheron/agents/biz/agent",
+        "workspace": "~/.openheron/agents/biz/workspace",
+        "agentDir": "~/.openheron/agents/biz",
         "skills": [
           "sales"
         ],
