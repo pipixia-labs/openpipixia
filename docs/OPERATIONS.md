@@ -237,6 +237,7 @@ openheron doctor --verbose
 
 - `routes lint` 是独立的静态路由检查命令（只读，不改配置）。
 - `routes lint --json` 新增 `warnings` 字段，用于提示 scope（guild/team/roles）在部分 channel 的可达性风险。
+- `routes lint --json` 包含 `scopeSupportedChannels`，可直接查看当前支持 scope metadata 的 channel 列表。
 - `doctor` 适合看全局健康状态（provider/channel/mcp/security + multiAgent）。
 
 `doctor --json` 中新增 `multiAgent` 关键字段：
@@ -245,6 +246,8 @@ openheron doctor --verbose
   多智能体配置结构错误（如默认 agent 数量异常、binding 指向不存在 agent、binding 缺 channel）。
 - `multiAgent.warnings`
   非阻断风险提示（例如 scope 配置在当前 channel 上可能不可达）。
+- `multiAgent.scopeSupportedChannels`
+  当前版本可稳定承载 scope（guild/team/roles）metadata 的 channel 列表。
 - `multiAgent.summary`
   路由汇总信息：
   - `agentCount` / `bindingCount`

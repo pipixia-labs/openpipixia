@@ -1689,6 +1689,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("multiAgent", payload)
         self.assertIn("routePreview", payload["multiAgent"])
         self.assertIn("warnings", payload["multiAgent"])
+        self.assertIn("scopeSupportedChannels", payload["multiAgent"])
 
     def test_cmd_doctor_json_output_includes_provider_oauth_issue(self) -> None:
         from openheron import cli
@@ -2523,6 +2524,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("routePreview", payload)
         self.assertIn("suggestions", payload)
         self.assertIn("warnings", payload)
+        self.assertIn("scopeSupportedChannels", payload)
         self.assertEqual(payload["suggestions"], [])
         self.assertEqual(payload["warnings"], [])
         self.assertLessEqual(len(payload["routePreview"]), 3)

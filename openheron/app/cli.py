@@ -72,7 +72,7 @@ from ..runtime.cron_service import CronService
 from ..runtime.cron_schedule_parser import parse_schedule_input
 from ..runtime.heartbeat_status_store import read_heartbeat_status_snapshot
 from ..runtime.route_stats_store import read_route_stats_snapshot
-from ..runtime.route_capabilities import channel_supports_scope_metadata
+from ..runtime.route_capabilities import channel_supports_scope_metadata, list_scope_metadata_supported_channels
 from ..runtime.token_usage_store import parse_time_filter_to_epoch_ms, read_token_usage_stats, token_usage_db_path
 from ..runtime.gateway_service import (
     detect_service_manager,
@@ -1604,6 +1604,7 @@ def _cmd_doctor(
             "warnings": multi_agent_warnings,
             "summary": multi_agent_summary,
             "routePreview": multi_agent_preview,
+            "scopeSupportedChannels": list_scope_metadata_supported_channels(),
             "agent_count": len(config_payload.get("agents", {}).get("list", []))
             if isinstance(config_payload.get("agents", {}).get("list", []), list)
             else 0,
@@ -1815,6 +1816,7 @@ def _cmd_routes_lint(*, output_json: bool = False, limit: int = 8) -> int:
         "config": {"path": str(config_path), "exists": config_path.exists()},
         "issues": issues,
         "warnings": warnings,
+        "scopeSupportedChannels": list_scope_metadata_supported_channels(),
         "summary": summary,
         "routePreview": preview,
         "suggestions": suggestions,
