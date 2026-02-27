@@ -473,6 +473,47 @@ class CLITests(unittest.TestCase):
         self.assertIn("agentId 'missing' does not exist", joined)
         self.assertIn("match.channel is required", joined)
 
+    def test_doctor_summarize_multi_agent_config_counts_by_channel_and_tier(self) -> None:
+        from openheron import cli
+
+        cfg = cli.default_config()
+        cfg["agents"]["list"] = [
+            {"id": "main", "default": True},
+            {"id": "biz"},
+        ]
+        cfg["bindings"] = [
+            {"agentId": "main", "match": {"channel": "telegram"}},
+            {"agentId": "biz", "match": {"channel": "whatsapp", "accountId": "business"}},
+            {
+                "agentId": "biz",
+                "match": {"channel": "whatsapp", "accountId": "business", "peer": {"kind": "direct", "id": "+1"}},
+            },
+        ]
+        summary = cli._doctor_summarize_multi_agent_config(cfg)
+        self.assertEqual(summary["agentCount"], 2)
+        self.assertEqual(summary["bindingCount"], 3)
+        self.assertEqual(summary["byChannel"]["whatsapp"], 2)
+        self.assertEqual(summary["routeTierCount"]["channel"], 1)
+        self.assertEqual(summary["routeTierCount"]["account"], 1)
+        self.assertEqual(summary["routeTierCount"]["peer"], 1)
+        self.assertEqual(summary["conflicts"], [])
+
+    def test_doctor_summarize_multi_agent_config_detects_duplicate_binding_signature(self) -> None:
+        from openheron import cli
+
+        cfg = cli.default_config()
+        cfg["agents"]["list"] = [
+            {"id": "main", "default": True},
+            {"id": "biz"},
+        ]
+        cfg["bindings"] = [
+            {"agentId": "main", "match": {"channel": "whatsapp", "accountId": "business"}},
+            {"agentId": "biz", "match": {"channel": "whatsapp", "accountId": "business"}},
+        ]
+        summary = cli._doctor_summarize_multi_agent_config(cfg)
+        self.assertEqual(len(summary["conflicts"]), 1)
+        self.assertIn("duplicates route match", summary["conflicts"][0])
+
     def test_check_github_copilot_oauth_non_invasive_missing_cache(self) -> None:
         from openheron import cli
 

@@ -1214,6 +1214,61 @@ def _doctor_validate_multi_agent_config(config: dict[str, Any]) -> list[str]:
     return issues
 
 
+def _doctor_summarize_multi_agent_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Build a compact multi-agent routing summary for doctor output."""
+    agents = config.get("agents", {})
+    entries = agents.get("list", []) if isinstance(agents, dict) else []
+    bindings = config.get("bindings", [])
+    normalized_bindings = bindings if isinstance(bindings, list) else []
+
+    by_channel: dict[str, int] = {}
+    tier_counts: dict[str, int] = {"peer": 0, "account": 0, "channel": 0}
+    seen_signatures: dict[tuple[str, str, str, str], str] = {}
+    conflicts: list[str] = []
+
+    for idx, item in enumerate(normalized_bindings):
+        if not isinstance(item, dict):
+            continue
+        agent_id = _normalize_agent_id_for_doctor(item.get("agentId")) or "unknown"
+        match = item.get("match", {})
+        if not isinstance(match, dict):
+            continue
+        channel = str(match.get("channel", "")).strip().lower()
+        if channel:
+            by_channel[channel] = by_channel.get(channel, 0) + 1
+        account = str(match.get("accountId", "")).strip().lower()
+        peer = match.get("peer", {})
+        peer_kind = ""
+        peer_id = ""
+        if isinstance(peer, dict):
+            peer_kind = str(peer.get("kind", "")).strip().lower()
+            peer_id = str(peer.get("id", "")).strip()
+
+        tier = "channel"
+        if peer_kind and peer_id:
+            tier = "peer"
+        elif account:
+            tier = "account"
+        tier_counts[tier] = tier_counts.get(tier, 0) + 1
+
+        signature = (channel, account, peer_kind, peer_id)
+        previous_agent = seen_signatures.get(signature)
+        if previous_agent and previous_agent != agent_id:
+            conflicts.append(
+                f"bindings[{idx}] duplicates route match {signature} but targets '{agent_id}' (first: '{previous_agent}')."
+            )
+        else:
+            seen_signatures[signature] = agent_id
+
+    return {
+        "agentCount": len(entries) if isinstance(entries, list) else 0,
+        "bindingCount": len(normalized_bindings),
+        "byChannel": by_channel,
+        "routeTierCount": tier_counts,
+        "conflicts": conflicts,
+    }
+
+
 def _cmd_doctor(
     *,
     output_json: bool = False,
@@ -1291,6 +1346,7 @@ def _cmd_doctor(
     channel_issues = validate_channel_setup(configured_channels)
     issues.extend(channel_issues)
     multi_agent_issues = _doctor_validate_multi_agent_config(config_payload)
+    multi_agent_summary = _doctor_summarize_multi_agent_config(config_payload)
     issues.extend(multi_agent_issues)
     if "whatsapp" in configured_channels and _whatsapp_bridge_precheck_enabled():
         bridge_issue = _check_whatsapp_bridge_ready()
@@ -1367,6 +1423,7 @@ def _cmd_doctor(
         "channels": {"configured": configured_channels},
         "multiAgent": {
             "issues": multi_agent_issues,
+            "summary": multi_agent_summary,
             "agent_count": len(config_payload.get("agents", {}).get("list", []))
             if isinstance(config_payload.get("agents", {}).get("list", []), list)
             else 0,
@@ -1470,6 +1527,15 @@ def _cmd_doctor(
                 f"error={result.get('error')}"
             )
     if verbose:
+        _stdout_line(
+            "Multi-agent summary: "
+            f"agents={multi_agent_summary.get('agentCount', 0)}, "
+            f"bindings={multi_agent_summary.get('bindingCount', 0)}, "
+            f"channels={len(multi_agent_summary.get('byChannel', {}))}, "
+            f"conflicts={len(multi_agent_summary.get('conflicts', []))}"
+        )
+        for item in multi_agent_summary.get("conflicts", [])[:10]:
+            _stdout_line(f"Multi-agent conflict: {item}")
         _stdout_line("Doctor details:")
         _stdout_line(json.dumps(report, ensure_ascii=False, indent=2))
 
