@@ -3,21 +3,21 @@
   <h1>OpenHeron: A Lightweight Personal AI Assistant 🚀</h1>
 </div>
 
-## News ✨
+## ✨ News
 
 - 2026-02-18: V0.2 released with multi-agent and GUI operation support.
 
-- 2026-02-12: Initial version released with single-agent support.
+- 2026-02-12: Initial version released with single-agent support, including Feishu image and file sending/receiving.
 
-## Key Features
+## 🔧 Key Features
 
 - Multi-agent support and compatibility with common providers.
 - Agents can operate the OS with computer-use tools.
 
 
-## Quick Start 🧭
+## 🧭 Quick Start
 
-### 1. Set Up the Environment and Initialize
+### 🛠️ 1. Set Up the Environment and Initialize
 ```bash
 git clone https://github.com/openheron/openheron
 cd openheron
@@ -45,7 +45,7 @@ Each agent workspace includes bootstrap/task files and local scaffolding, includ
 - `skills/`
 - `memory/MEMORY.md`, `memory/HISTORY.md`
 
-### 2. Configure Provider Keys
+### 🔑 2. Configure Provider Keys
 
 Review and edit your configuration files:
 
@@ -56,13 +56,13 @@ Review and edit your configuration files:
 Fill in required provider keys and assign per-agent security settings.
 You can leave channel-specific keys (for example Telegram or Feishu) empty at this stage.
 
-### 3. Try Local Interactive Mode
+### 💬 3. Try Local Interactive Mode
 
 ```bash
 openheron --config-path ~/.openheron/agent_name_1/config.json gateway run --channels local --interactive-local
 ```
 
-### 4. Enable Channel Chat and Start Background Service
+### 🛰️ 4. Enable Channel Chat and Start Background Service
 
 For channel keys and secrets, see `docs/CHANNELS.md`. After filling in channel keys, start the background gateway for regular usage:
 
@@ -72,7 +72,7 @@ openheron gateway start
 
 
 
-## Command Discovery
+## 🧪 Command Discovery
 
 ```bash
 openheron --help
@@ -85,7 +85,7 @@ openheron heartbeat --help
 openheron token --help
 ```
 
-## Gateway Usage
+## 🌉 Gateway Usage
 
 - `openheron gateway run`: run the gateway in the foreground
 - `openheron gateway start|stop|restart|status`: start, stop, restart, and inspect the background gateway process
@@ -100,7 +100,7 @@ openheron gateway-service install --channels local,feishu --enable
 openheron gateway-service status
 ```
 
-## GUI Automation
+## 🖥️ GUI Automation
 
 `openheron` includes desktop GUI tools. Configure `config.json` or set the following environment variables:
 
@@ -131,7 +131,7 @@ macOS permission reminder (required for GUI automation):
 - `Privacy & Security -> Screen Recording` (Terminal / Python host process)
 - `Privacy & Security -> Accessibility` (keyboard/mouse control)
 
-## Runtime Files
+## 📂 Runtime Files
 
 Background runtime/log files:
 
@@ -145,7 +145,7 @@ Background runtime/log files:
 Workspace-level runtime state lives under `<workspace>/.openheron/`
 (for example cron and heartbeat runtime snapshots).
 
-## Development
+## 🧰 Development
 
 Install in editable mode:
 
@@ -168,7 +168,7 @@ scripts/install_smoke.sh
 scripts/install_smoke.sh --with-gateway
 ```
 
-## Quick Ops
+## ⚡ Quick Ops
 
 ```bash
 # Single-turn call
@@ -188,7 +188,7 @@ openheron token stats --provider google --limit 50
 openheron token stats --last-hours 24
 ```
 
-## Project Layout
+## 🗂️ Project Layout
 
 ```text
 openheron_root/
@@ -199,7 +199,7 @@ openheron_root/
 └── scripts/
 ```
 
-## Documentation
+## 📚 Documentation
 
 Detailed documentation is in [`docs/`](./docs/):
 
@@ -224,7 +224,7 @@ openheron doctor --fix --json
 Then inspect `fix.reasonCodes` and `fix.byRule`
 (see `docs/OPERATIONS.md` for details).
 
-## Uninstall
+## 🧹 Uninstall
 
 Run this in the same Python environment where `openheron` was installed:
 
