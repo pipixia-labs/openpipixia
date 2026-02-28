@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -12,6 +13,23 @@ from ..runtime.cron_service import CronService
 from ..runtime.cron_schedule_parser import parse_schedule_input
 from ..runtime.heartbeat_status_store import read_heartbeat_status_snapshot
 from ..runtime.token_usage_store import parse_time_filter_to_epoch_ms, read_token_usage_stats
+
+
+def _format_response_at(raw: Any, *, display_utc: bool) -> str:
+    """Format one response timestamp in UTC or local timezone for text output."""
+    value = str(raw or "").strip()
+    if not value:
+        return "-"
+    if display_utc:
+        return value
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        dt = datetime.fromisoformat(normalized)
+    except ValueError:
+        return value
+    if dt.tzinfo is None:
+        return value
+    return dt.astimezone().isoformat()
 
 
 def cron_service_for_agent(
@@ -400,6 +418,7 @@ def cmd_token_stats(
     since: str | None,
     until: str | None,
     last_hours: int | None,
+    display_utc: bool,
     agent: str | None,
     stdout_line: Callable[[str], None],
     resolve_target_agent_names: Callable[[str | None], tuple[list[str], str | None]],
@@ -502,9 +521,10 @@ def cmd_token_stats(
             continue
         lines.append("Recent records:")
         for row in stats["recent"]:
+            response_at = _format_response_at(row.get("response_at", "-"), display_utc=display_utc)
             lines.append(
                 "- "
-                f"{row.get('response_at', '-')}"
+                f"{response_at}"
                 f" provider={row.get('provider', '-')}"
                 f" model={row.get('model', '-')}"
                 f" session={row.get('session_id', '-')}"
@@ -522,7 +542,7 @@ def dispatch_token_command(
     *,
     args: Any,
     parser: Any,
-    cmd_token_stats_fn: Callable[[bool, int, str | None, str | None, str | None, int | None, str | None], int],
+    cmd_token_stats_fn: Callable[[bool, int, str | None, str | None, str | None, int | None, bool, str | None], int],
 ) -> int:
     raw_agent = getattr(args, "agent", None)
     selected_agent = str(raw_agent).strip() if raw_agent is not None else ""
@@ -535,6 +555,7 @@ def dispatch_token_command(
             args.since,
             args.until,
             args.last_hours,
+            bool(getattr(args, "display_utc", False)),
             selected_agent,
         ),
     }

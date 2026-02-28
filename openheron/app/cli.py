@@ -3929,6 +3929,7 @@ def _cmd_token_stats(
     since: str | None,
     until: str | None,
     last_hours: int | None,
+    display_utc: bool = False,
     agent: str | None = None,
 ) -> int:
     return cli_runtime_ops.cmd_token_stats(
@@ -3938,6 +3939,7 @@ def _cmd_token_stats(
         since=since,
         until=until,
         last_hours=last_hours,
+        display_utc=display_utc,
         agent=agent,
         stdout_line=_stdout_line,
         resolve_target_agent_names=lambda value: _resolve_target_agent_names(agent=value),
@@ -3951,13 +3953,14 @@ def _dispatch_token_command(args: argparse.Namespace, parser: argparse.ArgumentP
     return cli_runtime_ops.dispatch_token_command(
         args=args,
         parser=parser,
-        cmd_token_stats_fn=lambda output_json, limit, provider, since, until, last_hours, agent: _cmd_token_stats(
+        cmd_token_stats_fn=lambda output_json, limit, provider, since, until, last_hours, display_utc, agent: _cmd_token_stats(
             output_json=output_json,
             limit=limit,
             provider=provider,
             since=since,
             until=until,
             last_hours=last_hours,
+            display_utc=display_utc,
             agent=agent,
         ),
     )
@@ -4360,6 +4363,12 @@ def main(argv: list[str] | None = None) -> None:
         type=int,
         default=None,
         help="Shortcut time filter for recent N hours (overrides --since/--until).",
+    )
+    token_stats_parser.add_argument(
+        "--utc",
+        dest="display_utc",
+        action="store_true",
+        help="Display recent record timestamps in UTC instead of local timezone.",
     )
     gateway_service_parser = subparsers.add_parser(
         "gateway-service",

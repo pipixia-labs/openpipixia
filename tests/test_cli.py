@@ -2884,6 +2884,27 @@ class CLITests(unittest.TestCase):
                     since="2026-02-26T00:00:00+08:00",
                     until="2026-02-26T23:59:59+08:00",
                     last_hours=None,
+                    display_utc=False,
+                    agent=None,
+                )
+                mocked_bootstrap.assert_called_once()
+
+    def test_token_stats_mode_dispatch_with_utc_flag(self) -> None:
+        from openheron import cli
+
+        with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
+            with patch.object(cli, "_cmd_token_stats", return_value=0) as mocked_stats:
+                with self.assertRaises(SystemExit) as ctx:
+                    cli.main(["token", "stats", "--utc"])
+                self.assertEqual(ctx.exception.code, 0)
+                mocked_stats.assert_called_once_with(
+                    output_json=False,
+                    limit=20,
+                    provider=None,
+                    since=None,
+                    until=None,
+                    last_hours=None,
+                    display_utc=True,
                     agent=None,
                 )
                 mocked_bootstrap.assert_called_once()
@@ -2903,6 +2924,7 @@ class CLITests(unittest.TestCase):
                     since=None,
                     until=None,
                     last_hours=None,
+                    display_utc=False,
                     agent="agent_a",
                 )
                 mocked_bootstrap.assert_called_once()
@@ -3138,6 +3160,7 @@ class CLITests(unittest.TestCase):
                             since=None,
                             until=None,
                             last_hours=24,
+                            display_utc=False,
                         )
 
         self.assertEqual(code, 0)
@@ -3156,6 +3179,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("Token DB: /tmp/agent_a/token_usage.db", section_rows[0][2])
         self.assertIn("provider=google", section_rows[0][2])
         self.assertIn("last_hours=24", section_rows[0][2])
+        self.assertNotIn("2026-02-26T10:00:01+00:00", section_rows[0][2])
 
     def test_cmd_token_stats_outputs_json(self) -> None:
         from openheron import cli
@@ -3186,6 +3210,7 @@ class CLITests(unittest.TestCase):
                             since="2026-02-26T00:00:00+08:00",
                             until="2026-02-26T23:59:59+08:00",
                             last_hours=None,
+                            display_utc=False,
                         )
 
         self.assertEqual(code, 0)
@@ -3210,6 +3235,7 @@ class CLITests(unittest.TestCase):
                     since=None,
                     until=None,
                     last_hours=None,
+                    display_utc=False,
                 )
 
         self.assertEqual(code, 1)
@@ -3226,6 +3252,7 @@ class CLITests(unittest.TestCase):
                 since="2026-02-27T00:00:00+08:00",
                 until="2026-02-26T23:59:59+08:00",
                 last_hours=None,
+                display_utc=False,
             )
         self.assertEqual(code, 1)
         self.assertIn("--since must be earlier", mocked_info.call_args[0][0])
