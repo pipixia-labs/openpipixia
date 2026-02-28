@@ -78,6 +78,29 @@ def _stdout_line(message: str) -> None:
     print(message)
 
 
+def _doctor_debug_log_path() -> Path:
+    """Return scoped doctor debug log path under current data directory."""
+    log_dir = get_data_dir() / "log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir / "doctor.debug.log"
+
+
+def _append_doctor_debug_lines(lines: list[str]) -> Path | None:
+    """Append doctor debug lines into scoped doctor debug log file."""
+    if not lines:
+        return None
+    try:
+        path = _doctor_debug_log_path()
+        ts = dt.datetime.now().astimezone().isoformat()
+        payload = [f"[{ts}] [doctor] {line}" for line in lines]
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write("\n".join(payload) + "\n")
+        return path
+    except Exception:
+        # Doctor diagnostics should not fail because debug log writing is unavailable.
+        return None
+
+
 def _parse_csv_list(raw: str) -> list[str]:
     """Parse comma-separated names, preserving order and removing duplicates."""
     seen: set[str] = set()
@@ -89,6 +112,25 @@ def _parse_csv_list(raw: str) -> list[str]:
         seen.add(name)
         names.append(name)
     return names
+
+
+def _doctor_parse_enabled_channels() -> list[str]:
+    """Parse enabled channels for doctor checks without importing channel factory."""
+    raw = os.getenv("OPENHERON_CHANNELS", "local")
+    names = [item.strip().lower() for item in raw.split(",") if item.strip()]
+    if not names:
+        return ["local"]
+    return list(dict.fromkeys(names))
+
+
+def _doctor_session_db_url() -> str:
+    """Resolve doctor session DB URL without importing runtime session service stack."""
+    value = os.getenv("OPENHERON_SESSION_DB_URL", "").strip()
+    if value:
+        return value
+    db_path = get_data_dir() / "database" / "sessions.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return f"sqlite+aiosqlite:///{db_path}"
 
 
 def _parse_enabled_channels(raw: str | None) -> list[str]:
@@ -1145,9 +1187,14 @@ def _cmd_doctor(
 
     registry = get_registry()
     skills_count = len(registry.list_skills())
-    session_cfg = load_session_config()
-    configured_channels = parse_enabled_channels(None)
-    channel_issues = validate_channel_setup(configured_channels)
+    session_db_url = _doctor_session_db_url()
+    if parse_enabled_channels is _parse_enabled_channels:
+        configured_channels = _doctor_parse_enabled_channels()
+    else:
+        # Respect external monkeypatches/injections used by tests/integrations.
+        configured_channels = parse_enabled_channels(None)
+    should_validate_channels = any(name != "local" for name in configured_channels)
+    channel_issues = validate_channel_setup(configured_channels) if should_validate_channels else []
     issues.extend(channel_issues)
     if "whatsapp" in configured_channels and _whatsapp_bridge_precheck_enabled():
         bridge_issue = _check_whatsapp_bridge_ready()
@@ -1220,7 +1267,7 @@ def _cmd_doctor(
             "summary": fix_summary,
         },
         "skills": {"count": skills_count},
-        "session": {"db_url": session_cfg.db_url},
+        "session": {"db_url": session_db_url},
         "channels": {"configured": configured_channels},
         "installPrereqs": install_prereqs,
         "heartbeat": {
@@ -1256,58 +1303,53 @@ def _cmd_doctor(
         },
     }
 
-    if output_json:
-        _stdout_line(json.dumps(report, ensure_ascii=False))
-        return 0 if report["ok"] else 1
-
-    logger.debug(f"Config file: {config_path}" + (" (found)" if config_path.exists() else " (not found)"))
-    logger.debug(f"Workspace: {registry.workspace}")
-    logger.debug(f"Detected skills: {skills_count}")
-    logger.debug(f"Provider: {provider_name} (enabled={provider_enabled}, model={provider_model})")
-    logger.debug(
-        "Provider OAuth: "
-        f"required={provider_oauth.get('required')}, "
-        f"authenticated={provider_oauth.get('authenticated')}, "
-        f"message={provider_oauth.get('message')}"
-    )
-    logger.debug(f"Session storage: sqlite ({session_cfg.db_url})")
-    logger.debug(f"Configured channels: {', '.join(configured_channels) if configured_channels else '(none)'}")
-    logger.debug(
-        "Heartbeat status snapshot: "
-        f"{'available' if heartbeat_snapshot is not None else 'missing'}"
-    )
-    logger.debug(
-        "Web search: "
-        f"enabled={web_enabled and web_search_enabled}, "
-        f"provider={web_search_provider}, "
-        f"api_key={'configured' if web_search_key_configured else 'missing'}"
-    )
-    logger.debug(
-        "Security: "
-        f"restrict_to_workspace={security_policy.restrict_to_workspace}, "
-        f"allow_exec={security_policy.allow_exec}, "
-        f"allow_network={security_policy.allow_network}, "
-        f"exec_allowlist={list(security_policy.exec_allowlist)}"
-    )
-    logger.debug(
-        "GUI execution: "
-        f"builtin_tools_enabled={gui_builtin_tools_enabled}, "
-        f"mode={gui_mode}, "
-        f"hint={gui_hint}"
-    )
+    doctor_debug_lines: list[str] = [
+        f"Config file: {config_path}" + (" (found)" if config_path.exists() else " (not found)"),
+        f"Workspace: {registry.workspace}",
+        f"Detected skills: {skills_count}",
+        f"Provider: {provider_name} (enabled={provider_enabled}, model={provider_model})",
+        (
+            "Provider OAuth: "
+            f"required={provider_oauth.get('required')}, "
+            f"authenticated={provider_oauth.get('authenticated')}, "
+            f"message={provider_oauth.get('message')}"
+        ),
+        f"Session storage: sqlite ({session_db_url})",
+        f"Configured channels: {', '.join(configured_channels) if configured_channels else '(none)'}",
+        "Heartbeat status snapshot: " + ("available" if heartbeat_snapshot is not None else "missing"),
+        (
+            "Web search: "
+            f"enabled={web_enabled and web_search_enabled}, "
+            f"provider={web_search_provider}, "
+            f"api_key={'configured' if web_search_key_configured else 'missing'}"
+        ),
+        (
+            "Security: "
+            f"restrict_to_workspace={security_policy.restrict_to_workspace}, "
+            f"allow_exec={security_policy.allow_exec}, "
+            f"allow_network={security_policy.allow_network}, "
+            f"exec_allowlist={list(security_policy.exec_allowlist)}"
+        ),
+        (
+            "GUI execution: "
+            f"builtin_tools_enabled={gui_builtin_tools_enabled}, "
+            f"mode={gui_mode}, "
+            f"hint={gui_hint}"
+        ),
+    ]
     if not mcp_summaries:
-        logger.debug("MCP: no servers configured")
+        doctor_debug_lines.append("MCP: no servers configured")
     else:
-        logger.debug(f"MCP: configured servers={len(mcp_summaries)}")
+        doctor_debug_lines.append(f"MCP: configured servers={len(mcp_summaries)}")
         for item in mcp_summaries:
-            logger.debug(
+            doctor_debug_lines.append(
                 "MCP: "
                 f"name={item.get('name')}, "
                 f"transport={item.get('transport')}, "
                 f"prefix={item.get('prefix')}"
             )
         for result in mcp_probe_results:
-            logger.debug(
+            doctor_debug_lines.append(
                 "MCP health: "
                 f"name={result.get('name')}, "
                 f"status={result.get('status')}, "
@@ -1317,9 +1359,18 @@ def _cmd_doctor(
                 f"error_kind={result.get('error_kind')}, "
                 f"error={result.get('error')}"
             )
+
+    debug_log_path = _append_doctor_debug_lines(doctor_debug_lines)
+
+    if output_json:
+        _stdout_line(json.dumps(report, ensure_ascii=False))
+        return 0 if report["ok"] else 1
+
     if verbose:
         _stdout_line("Doctor details:")
         _stdout_line(json.dumps(report, ensure_ascii=False, indent=2))
+        if debug_log_path is not None:
+            _stdout_line(f"Doctor debug log: {debug_log_path}")
 
     for line in install_prereqs:
         _stdout_line(_doctor_install_prereq_line(line))
