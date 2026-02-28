@@ -75,7 +75,6 @@ openheron gateway-service status --json
 - dingtalk: `channels.dingtalk.clientId` / `channels.dingtalk.clientSecret`
 - slack: `channels.slack.botToken`
 - whatsapp: `channels.whatsapp.bridgeUrl`
-- mochat: `channels.mochat.baseUrl` / `channels.mochat.clawToken`
 - email: `channels.email.consentGranted` / `channels.email.smtpHost` / `channels.email.smtpUsername` / `channels.email.smtpPassword`
 - qq: `channels.qq.appId` / `channels.qq.secret`
 
@@ -99,7 +98,7 @@ openheron gateway-service status --json
   打开 `~/.openheron/config.json`，给启用 provider 填 `apiKey`，再运行 `openheron doctor`。
   如果本地环境变量已配置，也可先运行 `openheron doctor --fix` 让系统自动回填缺失项。
 
-- `channels....` 凭证字段缺失（例如 feishu/telegram/discord/dingtalk/slack/whatsapp/mochat/email/qq）  
+- `channels....` 凭证字段缺失（例如 feishu/telegram/discord/dingtalk/slack/whatsapp/email/qq）  
   在 `~/.openheron/config.json` 的 `channels` 段补齐对应字段，再运行 `openheron doctor`。
   如果不确定具体字段，直接看 `openheron doctor --json` 的缺失项。
 

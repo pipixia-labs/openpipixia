@@ -19,7 +19,6 @@ from .discord import DiscordChannel
 from .email import EmailChannel
 from .feishu import FEISHU_AVAILABLE, FeishuChannel
 from .local import LocalChannel
-from .mochat import MochatChannel
 from .qq import QQ_AVAILABLE, QQChannel
 from .slack import SlackChannel
 from .telegram import TelegramChannel
@@ -155,29 +154,6 @@ def _validate_whatsapp() -> list[str]:
     return issues
 
 
-def _build_mochat(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
-    allow_from = _env_csv("MOCHAT_ALLOW_FROM")
-    sessions = _env_csv("MOCHAT_SESSIONS")
-    panels = _env_csv("MOCHAT_PANELS")
-    return MochatChannel(
-        bus=bus,
-        base_url=os.getenv("MOCHAT_BASE_URL", "").strip(),
-        claw_token=os.getenv("MOCHAT_CLAW_TOKEN", "").strip(),
-        agent_user_id=os.getenv("MOCHAT_AGENT_USER_ID", "").strip(),
-        sessions=sessions,
-        panels=panels,
-        allow_from=allow_from,
-        poll_interval_seconds=_env_int("MOCHAT_POLL_INTERVAL_SECONDS", 5),
-        watch_timeout_ms=_env_int("MOCHAT_WATCH_TIMEOUT_MS", 15000),
-        watch_limit=_env_int("MOCHAT_WATCH_LIMIT", 20),
-        panel_limit=_env_int("MOCHAT_PANEL_LIMIT", 50),
-    )
-
-
-def _validate_mochat() -> list[str]:
-    return _required_env_issues("mochat", "MOCHAT_BASE_URL", "MOCHAT_CLAW_TOKEN")
-
-
 def _env_flag(name: str, default: bool = False) -> bool:
     raw = os.getenv(name, "1" if default else "0").strip().lower()
     return raw in {"1", "true", "yes", "on"}
@@ -282,7 +258,6 @@ CHANNEL_ORDER: tuple[str, ...] = (
     "telegram",
     "whatsapp",
     "discord",
-    "mochat",
     "dingtalk",
     "email",
     "slack",
@@ -296,7 +271,6 @@ _IMPLEMENTED_CHANNEL_SPECS: tuple[ChannelSpec, ...] = (
     ChannelSpec(name="telegram", build=_build_telegram, validate_setup=_validate_telegram),
     ChannelSpec(name="whatsapp", build=_build_whatsapp, validate_setup=_validate_whatsapp),
     ChannelSpec(name="discord", build=_build_discord, validate_setup=_validate_discord),
-    ChannelSpec(name="mochat", build=_build_mochat, validate_setup=_validate_mochat),
     ChannelSpec(name="dingtalk", build=_build_dingtalk, validate_setup=_validate_dingtalk),
     ChannelSpec(name="email", build=_build_email, validate_setup=_validate_email),
     ChannelSpec(name="slack", build=_build_slack, validate_setup=_validate_slack),

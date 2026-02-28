@@ -3639,7 +3639,6 @@ def _multi_agent_channel_conflict_warnings(config_paths_by_agent: dict[str, Path
         "telegram",
         "whatsapp",
         "discord",
-        "mochat",
         "dingtalk",
         "email",
         "slack",

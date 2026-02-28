@@ -4,7 +4,7 @@
 
 `openheron` 是一个基于 Google ADK 的轻量级 Agent 系统，目标是用尽量小的实现覆盖完整的 Agent 运行链路：
 
-- 多渠道消息接入（local/feishu/telegram/whatsapp/discord/mochat/dingtalk/email/slack/qq）
+- 多渠道消息接入（local/feishu/telegram/whatsapp/discord/dingtalk/email/slack/qq）
 - Skills 驱动的能力扩展（`SKILL.md`）
 - 内置工具执行（文件、命令、Web、消息、定时任务、子代理）
 - 可持续会话（SQLite）与可选长期记忆（ADK Memory Service）

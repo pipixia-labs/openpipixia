@@ -99,17 +99,6 @@ INSTALL_CHANNEL_PROMPT_RULES: dict[str, tuple[InstallChannelPromptRule, ...]] = 
             "WhatsApp bridgeUrl (required for enabled channel, press Enter to skip for now)> ",
         ),
     ),
-    "mochat": (
-        InstallChannelPromptRule(
-            "baseUrl",
-            "Mochat baseUrl (required for enabled channel, press Enter to skip for now)> ",
-        ),
-        InstallChannelPromptRule(
-            "clawToken",
-            "Mochat clawToken (required for enabled channel, press Enter to skip for now)> ",
-            use_secret_reader=True,
-        ),
-    ),
     "email": (
         InstallChannelPromptRule(
             "consentGranted",

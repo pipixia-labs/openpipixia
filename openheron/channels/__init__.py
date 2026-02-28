@@ -7,7 +7,6 @@ from .email import EmailChannel
 from .factory import build_channel_manager, parse_enabled_channels, validate_channel_setup
 from .feishu import FeishuChannel
 from .local import LocalChannel
-from .mochat import MochatChannel
 from .qq import QQChannel
 from .slack import SlackChannel
 from .manager import ChannelManager
@@ -22,7 +21,6 @@ __all__ = [
     "EmailChannel",
     "FeishuChannel",
     "LocalChannel",
-    "MochatChannel",
     "QQChannel",
     "SlackChannel",
     "TelegramChannel",

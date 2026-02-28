@@ -38,7 +38,6 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("telegram", cfg["channels"])
         self.assertIn("whatsapp", cfg["channels"])
         self.assertIn("discord", cfg["channels"])
-        self.assertIn("mochat", cfg["channels"])
         self.assertIn("dingtalk", cfg["channels"])
         self.assertIn("email", cfg["channels"])
         self.assertIn("slack", cfg["channels"])
@@ -164,17 +163,6 @@ class ConfigTests(unittest.TestCase):
             cfg["channels"]["discord"]["token"] = "discord-token"
             cfg["channels"]["discord"]["allowFrom"] = ["du1", "du2"]
             cfg["channels"]["discord"]["pollChannels"] = ["123", "456"]
-            cfg["channels"]["mochat"]["enabled"] = True
-            cfg["channels"]["mochat"]["baseUrl"] = "https://mochat.io"
-            cfg["channels"]["mochat"]["clawToken"] = "mochat-claw-token"
-            cfg["channels"]["mochat"]["agentUserId"] = "agent_u1"
-            cfg["channels"]["mochat"]["sessions"] = ["session_1", "session_2"]
-            cfg["channels"]["mochat"]["panels"] = ["panel_1", "panel_2"]
-            cfg["channels"]["mochat"]["allowFrom"] = ["mo_u1", "mo_u2"]
-            cfg["channels"]["mochat"]["pollIntervalSeconds"] = 9
-            cfg["channels"]["mochat"]["watchTimeoutMs"] = 12000
-            cfg["channels"]["mochat"]["watchLimit"] = 21
-            cfg["channels"]["mochat"]["panelLimit"] = 88
             cfg["channels"]["dingtalk"]["enabled"] = True
             cfg["channels"]["dingtalk"]["clientId"] = "dt-app-id"
             cfg["channels"]["dingtalk"]["clientSecret"] = "dt-app-secret"
@@ -240,16 +228,6 @@ class ConfigTests(unittest.TestCase):
             os.environ.pop("DISCORD_BOT_TOKEN", None)
             os.environ.pop("DISCORD_ALLOW_FROM", None)
             os.environ.pop("DISCORD_POLL_CHANNELS", None)
-            os.environ.pop("MOCHAT_BASE_URL", None)
-            os.environ.pop("MOCHAT_CLAW_TOKEN", None)
-            os.environ.pop("MOCHAT_AGENT_USER_ID", None)
-            os.environ.pop("MOCHAT_SESSIONS", None)
-            os.environ.pop("MOCHAT_PANELS", None)
-            os.environ.pop("MOCHAT_ALLOW_FROM", None)
-            os.environ.pop("MOCHAT_POLL_INTERVAL_SECONDS", None)
-            os.environ.pop("MOCHAT_WATCH_TIMEOUT_MS", None)
-            os.environ.pop("MOCHAT_WATCH_LIMIT", None)
-            os.environ.pop("MOCHAT_PANEL_LIMIT", None)
             os.environ.pop("DINGTALK_CLIENT_ID", None)
             os.environ.pop("DINGTALK_CLIENT_SECRET", None)
             os.environ.pop("DINGTALK_ALLOW_FROM", None)
@@ -279,7 +257,7 @@ class ConfigTests(unittest.TestCase):
             loaded = bootstrap_env_from_config(path)
 
         self.assertIsNotNone(loaded)
-        self.assertEqual(os.environ["OPENHERON_CHANNELS"], "feishu,telegram,whatsapp,discord,mochat,dingtalk,email,slack,qq")
+        self.assertEqual(os.environ["OPENHERON_CHANNELS"], "feishu,telegram,whatsapp,discord,dingtalk,email,slack,qq")
         self.assertEqual(os.environ["OPENHERON_HEARTBEAT_EVERY"], "15m")
         self.assertEqual(os.environ["OPENHERON_HEARTBEAT_PROMPT"], "ops check")
         self.assertEqual(os.environ["OPENHERON_HEARTBEAT_ACK_MAX_CHARS"], "120")
@@ -302,16 +280,6 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(os.environ["DISCORD_BOT_TOKEN"], "discord-token")
         self.assertEqual(os.environ["DISCORD_ALLOW_FROM"], "du1,du2")
         self.assertEqual(os.environ["DISCORD_POLL_CHANNELS"], "123,456")
-        self.assertEqual(os.environ["MOCHAT_BASE_URL"], "https://mochat.io")
-        self.assertEqual(os.environ["MOCHAT_CLAW_TOKEN"], "mochat-claw-token")
-        self.assertEqual(os.environ["MOCHAT_AGENT_USER_ID"], "agent_u1")
-        self.assertEqual(os.environ["MOCHAT_SESSIONS"], "session_1,session_2")
-        self.assertEqual(os.environ["MOCHAT_PANELS"], "panel_1,panel_2")
-        self.assertEqual(os.environ["MOCHAT_ALLOW_FROM"], "mo_u1,mo_u2")
-        self.assertEqual(os.environ["MOCHAT_POLL_INTERVAL_SECONDS"], "9")
-        self.assertEqual(os.environ["MOCHAT_WATCH_TIMEOUT_MS"], "12000")
-        self.assertEqual(os.environ["MOCHAT_WATCH_LIMIT"], "21")
-        self.assertEqual(os.environ["MOCHAT_PANEL_LIMIT"], "88")
         self.assertEqual(os.environ["DINGTALK_CLIENT_ID"], "dt-app-id")
         self.assertEqual(os.environ["DINGTALK_CLIENT_SECRET"], "dt-app-secret")
         self.assertEqual(os.environ["DINGTALK_ALLOW_FROM"], "dt_u1,dt_u2")

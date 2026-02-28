@@ -838,7 +838,7 @@ class CLITests(unittest.TestCase):
         self.assertTrue(updated["channels"]["slack"]["enabled"])
         self.assertEqual(updated["channels"]["slack"]["botToken"], "slack-token")
 
-    def test_install_interactive_setup_collects_whatsapp_mochat_and_email_credentials(self) -> None:
+    def test_install_interactive_setup_collects_whatsapp_and_email_credentials(self) -> None:
         from openheron import cli
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -846,11 +846,8 @@ class CLITests(unittest.TestCase):
             cfg = cli.default_config()
             cfg["channels"]["local"]["enabled"] = True
             cfg["channels"]["whatsapp"]["enabled"] = False
-            cfg["channels"]["mochat"]["enabled"] = False
             cfg["channels"]["email"]["enabled"] = False
             cfg["channels"]["whatsapp"]["bridgeUrl"] = ""
-            cfg["channels"]["mochat"]["baseUrl"] = ""
-            cfg["channels"]["mochat"]["clawToken"] = ""
             cfg["channels"]["email"]["consentGranted"] = False
             cfg["channels"]["email"]["smtpHost"] = ""
             cfg["channels"]["email"]["smtpUsername"] = ""
@@ -860,10 +857,8 @@ class CLITests(unittest.TestCase):
                 [
                     "skip",
                     "",
-                    "whatsapp,mochat,email",
+                    "whatsapp,email",
                     "ws://bridge.local",
-                    "https://mochat.local",
-                    "mochat-token",
                     "yes",
                     "smtp.local",
                     "mailer",
@@ -879,9 +874,6 @@ class CLITests(unittest.TestCase):
 
         self.assertTrue(updated["channels"]["whatsapp"]["enabled"])
         self.assertEqual(updated["channels"]["whatsapp"]["bridgeUrl"], "ws://bridge.local")
-        self.assertTrue(updated["channels"]["mochat"]["enabled"])
-        self.assertEqual(updated["channels"]["mochat"]["baseUrl"], "https://mochat.local")
-        self.assertEqual(updated["channels"]["mochat"]["clawToken"], "mochat-token")
         self.assertTrue(updated["channels"]["email"]["enabled"])
         self.assertTrue(updated["channels"]["email"]["consentGranted"])
         self.assertEqual(updated["channels"]["email"]["smtpHost"], "smtp.local")
@@ -1141,7 +1133,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("channels.dingtalk.clientSecret", joined)
         self.assertIn("channels.slack.botToken", joined)
 
-    def test_install_summary_lines_reports_missing_whatsapp_mochat_and_email_credentials(self) -> None:
+    def test_install_summary_lines_reports_missing_whatsapp_and_email_credentials(self) -> None:
         from openheron import cli
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -1150,9 +1142,6 @@ class CLITests(unittest.TestCase):
             cfg["channels"]["local"]["enabled"] = False
             cfg["channels"]["whatsapp"]["enabled"] = True
             cfg["channels"]["whatsapp"]["bridgeUrl"] = ""
-            cfg["channels"]["mochat"]["enabled"] = True
-            cfg["channels"]["mochat"]["baseUrl"] = ""
-            cfg["channels"]["mochat"]["clawToken"] = ""
             cfg["channels"]["email"]["enabled"] = True
             cfg["channels"]["email"]["consentGranted"] = False
             cfg["channels"]["email"]["smtpHost"] = ""
@@ -1164,8 +1153,6 @@ class CLITests(unittest.TestCase):
 
         joined = "\n".join(lines)
         self.assertIn("channels.whatsapp.bridgeUrl", joined)
-        self.assertIn("channels.mochat.baseUrl", joined)
-        self.assertIn("channels.mochat.clawToken", joined)
         self.assertIn("channels.email.consentGranted", joined)
         self.assertIn("channels.email.smtpHost", joined)
         self.assertIn("channels.email.smtpUsername", joined)

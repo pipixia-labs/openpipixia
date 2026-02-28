@@ -71,12 +71,6 @@ class ChannelFactoryTests(unittest.TestCase):
         self.assertTrue(any("WHATSAPP_BRIDGE_URL" in item for item in issues))
         self.assertFalse(any("Unsupported channels" in item for item in issues))
 
-    def test_validate_reports_mochat_setup_issues(self) -> None:
-        issues = validate_channel_setup(["mochat"])
-        self.assertTrue(any("MOCHAT_BASE_URL" in item for item in issues))
-        self.assertTrue(any("MOCHAT_CLAW_TOKEN" in item for item in issues))
-        self.assertFalse(any("Unsupported channels" in item for item in issues))
-
     def test_build_local_channel_manager(self) -> None:
         manager, local_channel = build_channel_manager(bus=MessageBus(), channel_names=["local"])
         self.assertIsNotNone(local_channel)
@@ -123,13 +117,6 @@ class ChannelFactoryTests(unittest.TestCase):
         os.environ["WHATSAPP_BRIDGE_URL"] = "ws://127.0.0.1:3001"
         manager, _ = build_channel_manager(bus=MessageBus(), channel_names=["whatsapp"])
         self.assertIn("whatsapp", manager.channels)
-
-    def test_build_manager_registers_mochat_when_configured(self) -> None:
-        os.environ["MOCHAT_BASE_URL"] = "https://mochat.io"
-        os.environ["MOCHAT_CLAW_TOKEN"] = "claw-token"
-        manager, _ = build_channel_manager(bus=MessageBus(), channel_names=["mochat"])
-        self.assertIn("mochat", manager.channels)
-
 
 if __name__ == "__main__":
     unittest.main()

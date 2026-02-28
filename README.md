@@ -24,17 +24,16 @@ Core focus areas:
 
 ## Quick Start
 
+### 1. Set Up the Environment and Initialize
 ```bash
-cd openheron_root
+git clone https://github.com/openheron/openheron
+cd openheron
 python3.14 -m venv .venv
 source .venv/bin/activate
 pip install .
 openheron init
 # Follow the `openheron init` output and edit the generated config files.
-python -m openheron.cli -m "Describe what you can do"
 ```
-
-## What `openheron init` Creates
 
 `openheron init` scaffolds a default multi-agent setup:
 
@@ -52,29 +51,32 @@ Each agent workspace includes bootstrap/task files and local scaffolding, includ
 - `skills/`
 - `memory/MEMORY.md`, `memory/HISTORY.md`
 
-## First-Run Workflow
+### 2. Configure Provider Keys
 
-1. Review and edit your configuration files.
+Review and edit your configuration files:
+
 - `global_config.json`
-- Each agent's config/runtime/workspace files: fill in required keys and assign per-agent security permissions.
+- Each agent's config/runtime/workspace files, for example:
+  `~/.openheron/agent_name_1/config.json`
 
-2. Validate readiness:
+Fill in required provider keys and assign per-agent security settings.
+You can leave channel-specific keys (for example Telegram or Feishu) empty at this stage.
 
-```bash
-openheron doctor
-```
-
-3. Try local interactive mode first:
+### 3. Try Local Interactive Mode
 
 ```bash
 openheron --config-path ~/.openheron/agent_name_1/config.json gateway run --channels local --interactive-local
 ```
 
-4. Start background gateway for regular usage:
+### 4. Enable Channel Chat and Start Background Service
+
+For channel keys and secrets, see docs/CHANNELS.md. After filling channel keys, start the background gateway for regular usage:
 
 ```bash
 openheron gateway start
 ```
+
+
 
 ## Command Discovery
 
