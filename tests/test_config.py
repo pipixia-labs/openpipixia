@@ -606,39 +606,43 @@ class ConfigTests(unittest.TestCase):
             path = Path(tmp) / "config.json"
             cfg = default_config()
             cfg["multimodalProviders"] = {
-                "grounding_mm": {
+                "google": {
                     "enabled": True,
                     "apiKey": "grounding-key",
-                    "model": "gpt-4.1-mini",
+                    "model": "gemini-3-flash-preview",
                     "apiBase": "https://grounding.example/v1",
                     "extraHeaders": {},
                 },
-                "planner_mm": {
+                "openai": {
                     "enabled": True,
                     "apiKey": "planner-key",
-                    "model": "gpt-4.1",
+                    "model": "openai/gpt-4.1-mini",
                     "apiBase": "https://planner.example/v1",
                     "extraHeaders": {},
                 },
             }
-            cfg["gui"]["groundingProvider"] = "grounding_mm"
-            cfg["gui"]["plannerProvider"] = "planner_mm"
+            cfg["gui"]["groundingProvider"] = "google"
+            cfg["gui"]["plannerProvider"] = "openai"
             save_config(cfg, path)
 
             os.environ.pop("OPENHERON_GUI_MODEL", None)
-            os.environ.pop("OPENHERON_GUI_API_KEY", None)
             os.environ.pop("OPENHERON_GUI_BASE_URL", None)
             os.environ.pop("OPENHERON_GUI_PLANNER_MODEL", None)
-            os.environ.pop("OPENHERON_GUI_PLANNER_API_KEY", None)
             os.environ.pop("OPENHERON_GUI_PLANNER_BASE_URL", None)
+            os.environ.pop("OPENHERON_GUI_GROUNDING_PROVIDER", None)
+            os.environ.pop("OPENHERON_GUI_PLANNER_PROVIDER", None)
+            os.environ.pop("GOOGLE_API_KEY", None)
+            os.environ.pop("OPENAI_API_KEY", None)
             bootstrap_env_from_config(path)
 
-        self.assertEqual(os.environ["OPENHERON_GUI_MODEL"], "gpt-4.1-mini")
-        self.assertEqual(os.environ["OPENHERON_GUI_API_KEY"], "grounding-key")
+        self.assertEqual(os.environ["OPENHERON_GUI_MODEL"], "gemini-3-flash-preview")
         self.assertEqual(os.environ["OPENHERON_GUI_BASE_URL"], "https://grounding.example/v1")
-        self.assertEqual(os.environ["OPENHERON_GUI_PLANNER_MODEL"], "gpt-4.1")
-        self.assertEqual(os.environ["OPENHERON_GUI_PLANNER_API_KEY"], "planner-key")
+        self.assertEqual(os.environ["OPENHERON_GUI_GROUNDING_PROVIDER"], "google")
+        self.assertEqual(os.environ["OPENHERON_GUI_PLANNER_MODEL"], "openai/gpt-4.1-mini")
         self.assertEqual(os.environ["OPENHERON_GUI_PLANNER_BASE_URL"], "https://planner.example/v1")
+        self.assertEqual(os.environ["OPENHERON_GUI_PLANNER_PROVIDER"], "openai")
+        self.assertEqual(os.environ["GOOGLE_API_KEY"], "grounding-key")
+        self.assertEqual(os.environ["OPENAI_API_KEY"], "planner-key")
         self.assertEqual(os.environ["OPENHERON_GUI_BUILTIN_TOOLS_ENABLED"], "1")
 
     def test_gui_builtin_tools_flag_is_exported(self) -> None:
@@ -658,25 +662,47 @@ class ConfigTests(unittest.TestCase):
             path = Path(tmp) / "config.json"
             cfg = default_config()
             cfg["multimodalProviders"] = {
-                "grounding_mm": {
+                "google": {
                     "enabled": False,
                     "apiKey": "grounding-key",
-                    "model": "gpt-4.1-mini",
+                    "model": "gemini-3-flash-preview",
                     "apiBase": "https://grounding.example/v1",
                     "extraHeaders": {},
                 }
             }
-            cfg["gui"]["groundingProvider"] = "grounding_mm"
+            cfg["gui"]["groundingProvider"] = "google"
             save_config(cfg, path)
 
             os.environ["OPENHERON_GUI_MODEL"] = "stale-model"
-            os.environ["OPENHERON_GUI_API_KEY"] = "stale-key"
             os.environ["OPENHERON_GUI_BASE_URL"] = "https://stale.example/v1"
+            os.environ["OPENHERON_GUI_GROUNDING_PROVIDER"] = "openai"
             bootstrap_env_from_config(path)
 
         self.assertNotIn("OPENHERON_GUI_MODEL", os.environ)
-        self.assertNotIn("OPENHERON_GUI_API_KEY", os.environ)
         self.assertNotIn("OPENHERON_GUI_BASE_URL", os.environ)
+        self.assertEqual(os.environ.get("OPENHERON_GUI_GROUNDING_PROVIDER", ""), "google")
+
+    def test_gui_multimodal_google_provider_api_key_falls_back_to_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            cfg = default_config()
+            cfg["multimodalProviders"] = {
+                "google": {
+                    "enabled": True,
+                    "apiKey": "",
+                    "model": "gemini-3-flash-preview",
+                    "apiBase": "",
+                    "extraHeaders": {},
+                }
+            }
+            cfg["gui"]["groundingProvider"] = "google"
+            save_config(cfg, path)
+
+            os.environ["GOOGLE_API_KEY"] = "key-from-shell"
+            bootstrap_env_from_config(path)
+
+        self.assertEqual(os.environ["GOOGLE_API_KEY"], "key-from-shell")
+        self.assertEqual(os.environ["OPENHERON_GUI_GROUNDING_PROVIDER"], "google")
 
     def test_provider_active_key_is_ignored_when_enabled_points_elsewhere(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

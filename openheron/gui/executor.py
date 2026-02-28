@@ -14,11 +14,12 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from ..core.logging_utils import debug_logging_enabled, emit_debug
+from ..core.provider import canonical_provider_name, provider_api_key_env
 from ..runtime.adk_utils import extract_text, merge_text_stream
 from .prompts import load_executor_system_prompt
 
 DEFAULT_GUI_MODEL_ENV = "OPENHERON_GUI_MODEL"
-DEFAULT_GUI_API_KEY_ENV = "OPENHERON_GUI_API_KEY"
+DEFAULT_GUI_GROUNDING_PROVIDER_ENV = "OPENHERON_GUI_GROUNDING_PROVIDER"
 DEFAULT_GUI_BASE_URL_ENV = "OPENHERON_GUI_BASE_URL"
 DEFAULT_GUI_ALLOW_DANGEROUS_KEYS_ENV = "OPENHERON_GUI_ALLOW_DANGEROUS_KEYS"
 DEFAULT_GUI_MAX_WAIT_SECONDS_ENV = "OPENHERON_GUI_MAX_WAIT_SECONDS"
@@ -301,6 +302,7 @@ class GroundingExecutor:
         *,
         model: str,
         api_key: str,
+        provider: str = "",
         base_url: str | None = None,
         runtime: GuiRuntime | None = None,
         grounding_runner: Any | None = None,
@@ -313,6 +315,7 @@ class GroundingExecutor:
         self._grounding_runner: Any = grounding_runner or self._build_adk_grounding_runner(
             model=model,
             api_key=api_key,
+            provider=provider,
             base_url=base_url,
         )
         self._grounding_user_id = "gui_grounding"
@@ -322,13 +325,19 @@ class GroundingExecutor:
         self._max_action_retries = max(0, int(max_action_retries))
 
     @staticmethod
-    def _build_adk_grounding_runner(*, model: str, api_key: str, base_url: str | None) -> Any:
+    def _build_adk_grounding_runner(
+        *,
+        model: str,
+        api_key: str,
+        provider: str,
+        base_url: str | None,
+    ) -> Any:
         """Create one ADK runner dedicated to single-step GUI grounding."""
         from google.adk.agents import LlmAgent
         from ..runtime.runner_factory import create_runner
 
         adk_model: Any = model
-        if api_key or base_url:
+        if provider != "google" and (api_key or base_url):
             from google.adk.models.lite_llm import LiteLlm
 
             kwargs: dict[str, Any] = {"drop_params": True}
@@ -496,7 +505,10 @@ def execute_gui_action(
 ) -> dict[str, Any]:
     """Execute one GUI action using env or explicit grounding config."""
     resolved_model = (model or os.getenv(DEFAULT_GUI_MODEL_ENV, "")).strip()
-    resolved_api_key = (api_key or os.getenv(DEFAULT_GUI_API_KEY_ENV, "") or os.getenv("OPENAI_API_KEY", "")).strip()
+    grounding_provider = canonical_provider_name(os.getenv(DEFAULT_GUI_GROUNDING_PROVIDER_ENV, ""))
+    grounding_api_key_env = provider_api_key_env(grounding_provider) if grounding_provider else None
+    provider_api_key = os.getenv(grounding_api_key_env, "").strip() if grounding_api_key_env else ""
+    resolved_api_key = (api_key or provider_api_key).strip()
     resolved_base_url = (base_url or os.getenv(DEFAULT_GUI_BASE_URL_ENV, "")).strip() or None
 
     if not resolved_model:
@@ -504,8 +516,12 @@ def execute_gui_action(
             f"Missing GUI model. Set {DEFAULT_GUI_MODEL_ENV} or pass model explicitly."
         )
     if not resolved_api_key:
+        if grounding_api_key_env:
+            error_hint = grounding_api_key_env
+        else:
+            error_hint = "provider API key env (for OPENHERON_GUI_GROUNDING_PROVIDER)"
         raise ValueError(
-            f"Missing GUI api key. Set {DEFAULT_GUI_API_KEY_ENV} or OPENAI_API_KEY, or pass api_key explicitly."
+            f"Missing GUI api key. Set {error_hint} or pass api_key explicitly."
         )
 
     allow_dangerous_keys = (os.getenv(DEFAULT_GUI_ALLOW_DANGEROUS_KEYS_ENV, "").strip().lower() == "true")
@@ -539,6 +555,7 @@ def execute_gui_action(
     executor = GroundingExecutor(
         model=resolved_model,
         api_key=resolved_api_key,
+        provider=grounding_provider,
         base_url=resolved_base_url,
         runtime=PyAutoGuiRuntime(
             allow_dangerous_keys=allow_dangerous_keys,

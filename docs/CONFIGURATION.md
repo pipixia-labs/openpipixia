@@ -99,11 +99,11 @@ Provider 选择由 `enabled` 控制，建议保持“仅一个 provider 为 true
 
 - GUI 执行链路已固定为 ADK-only：不再使用 `OPENHERON_GUI_USE_ADK_GROUNDING`、`OPENHERON_GUI_TASK_USE_ADK_PLANNER` 开关。
 - `OPENHERON_GUI_MODEL`
-- `OPENHERON_GUI_API_KEY`
 - `OPENHERON_GUI_BASE_URL`
 - `OPENHERON_GUI_PLANNER_MODEL`
-- `OPENHERON_GUI_PLANNER_API_KEY`
 - `OPENHERON_GUI_PLANNER_BASE_URL`
+- `OPENHERON_GUI_GROUNDING_PROVIDER`
+- `OPENHERON_GUI_PLANNER_PROVIDER`
 - `OPENHERON_GUI_MAX_PARSE_RETRIES`
 - `OPENHERON_GUI_MAX_ACTION_RETRIES`
 - `OPENHERON_GUI_VERIFY_SCREEN_CHANGE`
@@ -197,11 +197,11 @@ Provider 选择由 `enabled` 控制，建议保持“仅一个 provider 为 true
 | 变量 | 默认值 | 作用 | 何时需要设置 |
 |---|---|---|---|
 | `OPENHERON_GUI_MODEL` | 空 | `computer_use` 的 grounding 模型 | 启用 GUI 单步工具时必填 |
-| `OPENHERON_GUI_API_KEY` | 空（回退 `OPENAI_API_KEY`） | grounding 模型 API Key | 与 `OPENHERON_GUI_MODEL` 配套 |
 | `OPENHERON_GUI_BASE_URL` | 空 | grounding 模型 API Base URL | 使用兼容网关或私有部署时 |
 | `OPENHERON_GUI_PLANNER_MODEL` | 空（回退 `OPENHERON_GUI_MODEL`） | `computer_task` 多步 planner 模型 | 启用 GUI 多步工具时建议显式设置 |
-| `OPENHERON_GUI_PLANNER_API_KEY` | 空（回退 GUI key / `OPENAI_API_KEY`） | planner API Key | planner 与 executor 分离配置时 |
 | `OPENHERON_GUI_PLANNER_BASE_URL` | 空（回退 GUI base_url） | planner API Base URL | planner 与 executor 走不同网关时 |
+| `OPENHERON_GUI_GROUNDING_PROVIDER` | 空 | GUI grounding 使用的 provider 名称（如 `google` / `openai`） | 需要按 provider 环境变量自动取 key 时 |
+| `OPENHERON_GUI_PLANNER_PROVIDER` | 空 | GUI planner 使用的 provider 名称（为空时回退 grounding provider） | planner 与 grounding provider 不同 |
 | `OPENHERON_GUI_MAX_PARSE_RETRIES` | `1` | `computer_use` 解析模型输出失败时的重试次数 | 模型输出不稳定时增加 |
 | `OPENHERON_GUI_MAX_ACTION_RETRIES` | `1` | `computer_use` 在无屏幕变化时动作重试次数 | GUI 响应偶发慢时增加 |
 | `OPENHERON_GUI_VERIFY_SCREEN_CHANGE` | `true` | 是否启用前后截图变化校验 | 调试阶段可临时设为 `false` |
@@ -219,6 +219,7 @@ Provider 选择由 `enabled` 控制，建议保持“仅一个 provider 为 true
 ```bash
 export OPENHERON_GUI_MODEL=gpt-4.1-mini
 export OPENHERON_GUI_PLANNER_MODEL=gpt-4.1-mini
+export OPENHERON_GUI_GROUNDING_PROVIDER=openai
 export OPENAI_API_KEY=your_api_key
 ```
 

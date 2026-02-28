@@ -25,6 +25,40 @@ class _FakeRuntime:
 
 
 class GuiTaskRunnerTests(unittest.TestCase):
+    def test_build_planner_runner_uses_native_google_model_without_litellm(self) -> None:
+        with unittest.mock.patch("google.adk.models.lite_llm.LiteLlm") as mocked_litellm:
+            with unittest.mock.patch("google.adk.agents.LlmAgent") as mocked_agent:
+                with unittest.mock.patch(
+                    "openheron.runtime.runner_factory.create_runner",
+                    return_value=(object(), None),
+                ):
+                    GuiTaskRunner._build_adk_planner_runner(
+                        planner_model="gemini-3-flash-preview",
+                        planner_api_key="google-key",
+                        planner_provider="google",
+                        planner_base_url=None,
+                    )
+
+        mocked_litellm.assert_not_called()
+        self.assertEqual(mocked_agent.call_args.kwargs["model"], "gemini-3-flash-preview")
+
+    def test_build_planner_runner_uses_litellm_for_non_google_provider(self) -> None:
+        with unittest.mock.patch("google.adk.models.lite_llm.LiteLlm") as mocked_litellm:
+            mocked_litellm.return_value = object()
+            with unittest.mock.patch("google.adk.agents.LlmAgent"):
+                with unittest.mock.patch(
+                    "openheron.runtime.runner_factory.create_runner",
+                    return_value=(object(), None),
+                ):
+                    GuiTaskRunner._build_adk_planner_runner(
+                        planner_model="openai/gpt-4.1-mini",
+                        planner_api_key="openai-key",
+                        planner_provider="openai",
+                        planner_base_url=None,
+                    )
+
+        mocked_litellm.assert_called_once()
+
     def test_task_runner_execute_then_reply(self) -> None:
         planned = [
             '{"thinking":"step1","action":{"type":"execute","params":{"action":"click login button"}}}',
@@ -246,7 +280,8 @@ class GuiTaskRunnerTests(unittest.TestCase):
                 "os.environ",
                 {
                     "OPENHERON_GUI_MODEL": "test-model",
-                    "OPENHERON_GUI_API_KEY": "test-key",
+                    "OPENHERON_GUI_GROUNDING_PROVIDER": "openai",
+                    "OPENAI_API_KEY": "test-key",
                 },
                 clear=False,
             ):

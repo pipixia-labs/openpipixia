@@ -30,6 +30,7 @@ git clone https://github.com/openheron/openheron
 cd openheron
 python3.14 -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt 
 pip install .
 openheron init
 # Follow the `openheron init` output and edit the generated config files.
@@ -113,12 +114,14 @@ openheron gateway-service status
 ```bash
 export OPENHERON_GUI_MODEL=$NAME_OF_YOUR_MLLM
 export OPENHERON_GUI_PLANNER_MODEL=$NAME_OF_YOUR_MLLM
-export OPENAI_API_KEY=your_api_key
+export OPENHERON_GUI_GROUNDING_PROVIDER=openai
+export OPENAI_API_KEY=your_api_key   # for openai provider
 ```
 
 - `OPENHERON_GUI_MODEL`: multi-modal model used for low-level GUI grounding/actions
 - `OPENHERON_GUI_PLANNER_MODEL`: multi-modal model used for multi-step planning
-- `OPENAI_API_KEY`: API key for the selected OpenAI-compatible provider
+- `OPENHERON_GUI_GROUNDING_PROVIDER`: provider used by GUI grounding/planner key lookup
+- provider API key env: depends on provider (for example `OPENAI_API_KEY` / `GOOGLE_API_KEY`)
 
 GUI smoke examples:
 

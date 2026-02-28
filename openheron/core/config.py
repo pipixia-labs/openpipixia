@@ -13,6 +13,7 @@ from loguru import logger
 from .env_utils import is_enabled
 from .provider import (
     DEFAULT_PROVIDER,
+    canonical_provider_name,
     default_model_for_provider,
     normalize_model_name,
     provider_api_key_env,
@@ -620,6 +621,10 @@ def _resolve_gui_provider_env(cfg: dict[str, Any], *, provider_name: str) -> tup
 
     model = str(raw.get("model", "")).strip()
     api_key = str(raw.get("apiKey", "")).strip()
+    if not api_key:
+        api_key_env = provider_api_key_env(canonical_provider_name(name))
+        if api_key_env:
+            api_key = os.getenv(api_key_env, "").strip()
     api_base = str(raw.get("apiBase", "")).strip()
     return model, api_key, api_base
 
@@ -630,23 +635,43 @@ def _resolve_gui_multimodal_env(cfg: dict[str, Any]) -> dict[str, str]:
     if not isinstance(gui, dict):
         gui = {}
 
-    grounding_model, grounding_api_key, grounding_api_base = _resolve_gui_provider_env(
+    grounding_model, _, grounding_api_base = _resolve_gui_provider_env(
         cfg,
         provider_name=str(gui.get("groundingProvider", "")),
     )
-    planner_model, planner_api_key, planner_api_base = _resolve_gui_provider_env(
+    planner_model, _, planner_api_base = _resolve_gui_provider_env(
         cfg,
         provider_name=str(gui.get("plannerProvider", "")),
     )
 
     return {
         "OPENHERON_GUI_MODEL": grounding_model,
-        "OPENHERON_GUI_API_KEY": grounding_api_key,
         "OPENHERON_GUI_BASE_URL": grounding_api_base,
         "OPENHERON_GUI_PLANNER_MODEL": planner_model,
-        "OPENHERON_GUI_PLANNER_API_KEY": planner_api_key,
         "OPENHERON_GUI_PLANNER_BASE_URL": planner_api_base,
+        "OPENHERON_GUI_GROUNDING_PROVIDER": canonical_provider_name(str(gui.get("groundingProvider", ""))),
+        "OPENHERON_GUI_PLANNER_PROVIDER": canonical_provider_name(str(gui.get("plannerProvider", ""))),
     }
+
+
+def _resolve_gui_provider_api_key_env(cfg: dict[str, Any]) -> dict[str, str]:
+    """Resolve provider-bound API key env overrides needed by GUI runtime."""
+    gui = cfg.get("gui")
+    if not isinstance(gui, dict):
+        gui = {}
+
+    api_env: dict[str, str] = {}
+
+    for gui_key in ("groundingProvider", "plannerProvider"):
+        provider_name = str(gui.get(gui_key, "")).strip()
+        if not provider_name:
+            continue
+        _, api_key, _ = _resolve_gui_provider_env(cfg, provider_name=provider_name)
+        env_name = provider_api_key_env(canonical_provider_name(provider_name))
+        if env_name and api_key:
+            api_env[env_name] = api_key
+
+    return api_env
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -760,6 +785,7 @@ def config_to_env(
     restrict_workspace, allow_exec, allow_network, exec_allowlist = _resolve_security(cfg)
     mcp_servers_json = _resolve_mcp_servers_json(cfg)
     gui_multimodal_env = _resolve_gui_multimodal_env(cfg)
+    gui_provider_api_env = _resolve_gui_provider_api_key_env(cfg)
     debug = cfg.get("debug", False)
 
     provider_key_env = provider_api_key_env(provider_name) if provider_enabled else None
@@ -805,8 +831,9 @@ def config_to_env(
         "OPENHERON_DEBUG": "1" if bool(debug) else "0",
     }
     env.update(gui_multimodal_env)
+    env.update(gui_provider_api_env)
     env.update(channel_env)
-    if provider_key_env:
+    if provider_key_env and provider_api_key:
         env[provider_key_env] = provider_api_key
     # Keep runtime env overrides as the final layer so they can override any mapped key.
     if runtime_env_overrides is None:

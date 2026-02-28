@@ -30,6 +30,40 @@ class _FakeRuntime:
 
 
 class GuiExecutorTests(unittest.TestCase):
+    def test_build_runner_uses_native_google_model_without_litellm(self) -> None:
+        with unittest.mock.patch("google.adk.models.lite_llm.LiteLlm") as mocked_litellm:
+            with unittest.mock.patch("google.adk.agents.LlmAgent") as mocked_agent:
+                with unittest.mock.patch(
+                    "openheron.runtime.runner_factory.create_runner",
+                    return_value=(object(), None),
+                ):
+                    GroundingExecutor._build_adk_grounding_runner(
+                        model="gemini-3-flash-preview",
+                        api_key="google-key",
+                        provider="google",
+                        base_url=None,
+                    )
+
+        mocked_litellm.assert_not_called()
+        self.assertEqual(mocked_agent.call_args.kwargs["model"], "gemini-3-flash-preview")
+
+    def test_build_runner_uses_litellm_for_non_google_provider(self) -> None:
+        with unittest.mock.patch("google.adk.models.lite_llm.LiteLlm") as mocked_litellm:
+            mocked_litellm.return_value = object()
+            with unittest.mock.patch("google.adk.agents.LlmAgent"):
+                with unittest.mock.patch(
+                    "openheron.runtime.runner_factory.create_runner",
+                    return_value=(object(), None),
+                ):
+                    GroundingExecutor._build_adk_grounding_runner(
+                        model="openai/gpt-4.1-mini",
+                        api_key="openai-key",
+                        provider="openai",
+                        base_url=None,
+                    )
+
+        mocked_litellm.assert_called_once()
+
     def test_executor_runs_with_tool_call_block(self) -> None:
         runtime = _FakeRuntime()
         executor = GroundingExecutor(
@@ -230,7 +264,8 @@ class GuiExecutorTests(unittest.TestCase):
                 "os.environ",
                 {
                     "OPENHERON_GUI_MODEL": "test-model",
-                    "OPENHERON_GUI_API_KEY": "test-key",
+                    "OPENHERON_GUI_GROUNDING_PROVIDER": "openai",
+                    "OPENAI_API_KEY": "test-key",
                 },
                 clear=False,
             ):

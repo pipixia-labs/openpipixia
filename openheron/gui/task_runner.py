@@ -10,10 +10,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..core.logging_utils import debug_logging_enabled, emit_debug
+from ..core.provider import canonical_provider_name, provider_api_key_env
 from ..runtime.adk_utils import extract_text, merge_text_stream
 from .executor import (
-    DEFAULT_GUI_API_KEY_ENV,
     DEFAULT_GUI_BASE_URL_ENV,
+    DEFAULT_GUI_GROUNDING_PROVIDER_ENV,
     DEFAULT_GUI_MODEL_ENV,
     CapturedScreen,
     PyAutoGuiRuntime,
@@ -23,7 +24,7 @@ from .prompts import load_planner_system_prompt
 
 
 DEFAULT_GUI_PLANNER_MODEL_ENV = "OPENHERON_GUI_PLANNER_MODEL"
-DEFAULT_GUI_PLANNER_API_KEY_ENV = "OPENHERON_GUI_PLANNER_API_KEY"
+DEFAULT_GUI_PLANNER_PROVIDER_ENV = "OPENHERON_GUI_PLANNER_PROVIDER"
 DEFAULT_GUI_PLANNER_BASE_URL_ENV = "OPENHERON_GUI_PLANNER_BASE_URL"
 DEFAULT_GUI_TASK_MAX_STEPS_ENV = "OPENHERON_GUI_TASK_MAX_STEPS"
 DEFAULT_GUI_TASK_PARSE_RETRIES_ENV = "OPENHERON_GUI_TASK_PARSE_RETRIES"
@@ -99,6 +100,7 @@ class GuiTaskRunner:
         *,
         planner_model: str,
         planner_api_key: str,
+        planner_provider: str = "",
         planner_base_url: str | None = None,
         action_executor: Callable[..., dict[str, Any]] | None = None,
         runtime: Any | None = None,
@@ -111,6 +113,7 @@ class GuiTaskRunner:
         self._planner_runner: Any = planner_runner or self._build_adk_planner_runner(
             planner_model=planner_model,
             planner_api_key=planner_api_key,
+            planner_provider=planner_provider,
             planner_base_url=planner_base_url,
         )
         self._planner_user_id = "gui_planner"
@@ -126,6 +129,7 @@ class GuiTaskRunner:
         *,
         planner_model: str,
         planner_api_key: str,
+        planner_provider: str,
         planner_base_url: str | None,
     ) -> Any:
         """Create one ADK runner dedicated to GUI planning."""
@@ -133,7 +137,7 @@ class GuiTaskRunner:
         from ..runtime.runner_factory import create_runner
 
         model: Any = planner_model
-        if planner_api_key or planner_base_url:
+        if planner_provider != "google" and (planner_api_key or planner_base_url):
             from google.adk.models.lite_llm import LiteLlm
 
             kwargs: dict[str, Any] = {"drop_params": True}
@@ -490,7 +494,7 @@ class GuiTaskRunner:
             )
             if not step_record["ok"]:
                 return _result(
-                    ok=False,
+                       ok=False,
                     finished=False,
                     status_code="failed",
                     error=f"computer_use failed at step {step}: {step_record.get('error')}",
@@ -557,6 +561,11 @@ def execute_gui_task(
     planner_base_url: str | None = None,
 ) -> dict[str, Any]:
     """Run a multi-step GUI task using environment-resolved planner settings."""
+    planner_provider = canonical_provider_name(
+        os.getenv(DEFAULT_GUI_PLANNER_PROVIDER_ENV, "") or os.getenv(DEFAULT_GUI_GROUNDING_PROVIDER_ENV, "")
+    )
+    planner_api_key_env = provider_api_key_env(planner_provider) if planner_provider else None
+    provider_api_key = os.getenv(planner_api_key_env, "").strip() if planner_api_key_env else ""
     resolved_planner_model = (
         planner_model
         or os.getenv(DEFAULT_GUI_PLANNER_MODEL_ENV, "")
@@ -564,9 +573,7 @@ def execute_gui_task(
     ).strip()
     resolved_planner_api_key = (
         planner_api_key
-        or os.getenv(DEFAULT_GUI_PLANNER_API_KEY_ENV, "")
-        or os.getenv(DEFAULT_GUI_API_KEY_ENV, "")
-        or os.getenv("OPENAI_API_KEY", "")
+        or provider_api_key
     ).strip()
     resolved_planner_base_url = (
         planner_base_url
@@ -605,6 +612,7 @@ def execute_gui_task(
     runner = GuiTaskRunner(
         planner_model=resolved_planner_model,
         planner_api_key=resolved_planner_api_key,
+        planner_provider=planner_provider,
         planner_base_url=resolved_planner_base_url,
         max_parse_retries=max_parse_retries,
         max_no_progress_steps=max_no_progress_steps,
