@@ -3117,7 +3117,8 @@ class CLITests(unittest.TestCase):
         lines = [call.args[0] for call in mocked_info.call_args_list if call.args]
         self.assertTrue(any("running=True" in line for line in lines))
         self.assertTrue(any("last_reason=cron:job1" in line for line in lines))
-        self.assertTrue(any('"cron": 2' in line for line in lines))
+        self.assertTrue(any("Heartbeat triggers (last 3): cron=2 (67%), exec=1 (33%)" in line for line in lines))
+        self.assertTrue(any("interval=timer" in line for line in lines))
 
     def test_cmd_token_stats_prints_summary_and_recent(self) -> None:
         from openheron import cli

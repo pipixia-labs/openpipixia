@@ -32,6 +32,28 @@ def _format_response_at(raw: Any, *, display_utc: bool) -> str:
     return dt.astimezone().isoformat()
 
 
+def _format_recent_reason_counts(raw_counts: Any) -> str:
+    """Render recent heartbeat trigger sources as sorted count/percentage text."""
+    if not isinstance(raw_counts, dict):
+        return "-"
+    normalized: dict[str, int] = {}
+    for key, value in raw_counts.items():
+        name = str(key or "").strip().lower() or "other"
+        try:
+            count = int(value)
+        except Exception:
+            continue
+        if count <= 0:
+            continue
+        normalized[name] = normalized.get(name, 0) + count
+    if not normalized:
+        return "-"
+    total = sum(normalized.values())
+    ordered = sorted(normalized.items(), key=lambda item: (-item[1], item[0]))
+    parts = [f"{name}={count} ({round((count * 100.0) / total):.0f}%)" for name, count in ordered]
+    return f"(last {total}): " + ", ".join(parts)
+
+
 def cron_service_for_agent(
     *,
     agent_name: str,
@@ -406,7 +428,9 @@ def cmd_heartbeat_status(
         f"target_mode={snapshot.get('target_mode', '-')}, "
         f"last_delivery_kind={delivery_kind}"
     )
-    stdout_line(f"Heartbeat recent reasons: {json.dumps(snapshot.get('recent_reason_counts', {}), ensure_ascii=False)}")
+    reason_summary = _format_recent_reason_counts(snapshot.get("recent_reason_counts", {}))
+    stdout_line(f"Heartbeat triggers {reason_summary}")
+    stdout_line("Heartbeat trigger sources: interval=timer, exec=tool wake, cron=cron wake, manual=user action.")
     return 0
 
 
