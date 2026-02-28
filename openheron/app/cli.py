@@ -1122,6 +1122,7 @@ def _cmd_doctor(
     verbose: bool = False,
     fix: bool = False,
     fix_dry_run: bool = False,
+    no_color: bool = False,
 ) -> int:
     """Run runtime diagnostics and return a process exit code.
 
@@ -1366,17 +1367,46 @@ def _cmd_doctor(
         _stdout_line(json.dumps(report, ensure_ascii=False))
         return 0 if report["ok"] else 1
 
+    color_enabled = (
+        (not no_color)
+        and bool(getattr(sys.stdout, "isatty", lambda: False)())
+        and (not os.getenv("NO_COLOR", "").strip())
+    )
+
+    def _color(text: str, code: str) -> str:
+        if not color_enabled:
+            return text
+        return f"\x1b[{code}m{text}\x1b[0m"
+
+    def _section(title: str) -> str:
+        return _color(title, "1;36")
+
+    def _ok(text: str) -> str:
+        return _color(text, "32")
+
+    def _warn(text: str) -> str:
+        return _color(text, "33")
+
+    def _err(text: str) -> str:
+        return _color(text, "31")
+
     if verbose:
-        _stdout_line("Doctor details:")
+        _stdout_line(_section("Doctor details:"))
         _stdout_line(json.dumps(report, ensure_ascii=False, indent=2))
         if debug_log_path is not None:
             _stdout_line(f"Doctor debug log: {debug_log_path}")
 
+    _stdout_line(_section("Install prerequisites:"))
     for line in install_prereqs:
-        _stdout_line(_doctor_install_prereq_line(line))
+        normalized = _doctor_install_prereq_line(line)
+        if "[warn]:" in normalized:
+            _stdout_line(_warn(normalized))
+        else:
+            _stdout_line(_ok(normalized))
 
+    _stdout_line(_section("Runtime status:"))
     if heartbeat_snapshot is None:
-        _stdout_line("Heartbeat: snapshot=missing")
+        _stdout_line(_warn("Heartbeat: snapshot=missing"))
     else:
         _stdout_line(
             "Heartbeat: "
@@ -1394,12 +1424,12 @@ def _cmd_doctor(
     )
 
     if issues:
-        _stdout_line("Issues:")
+        _stdout_line(_section("Issues:"))
         for item in issues:
-            _stdout_line(f"- {item}")
+            _stdout_line(_err(f"- {item}"))
         return 1
 
-    _stdout_line("Environment looks good.")
+    _stdout_line(_ok("Environment looks good."))
     return 0
 
 
@@ -1477,7 +1507,7 @@ def _provider_login_github_copilot() -> None:
     _stdout_line("GitHub Copilot OAuth authenticated.")
 
 
-def _cmd_provider_list() -> int:
+def _cmd_provider_list(*, verbose: bool = False) -> int:
     """List providers known by the runtime."""
     _stdout_line("Providers:")
     for name in provider_names():
@@ -1485,10 +1515,12 @@ def _cmd_provider_list() -> int:
         if not spec:
             _stdout_line(f"- {name}")
             continue
-        oauth_flag = ", oauth=true" if spec.is_oauth else ""
-        _stdout_line(
-            f"- {name}: runtime={spec.runtime}, default_model={spec.default_model}{oauth_flag}"
-        )
+        line = f"- {name}: default_model={spec.default_model}"
+        if verbose:
+            line += f", runtime={spec.runtime}"
+            if spec.is_oauth:
+                line += ", oauth=true"
+        _stdout_line(line)
     return 0
 
 
@@ -1583,8 +1615,9 @@ def _cmd_provider_login(provider_name: str) -> int:
 
 def _dispatch_provider_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     """Dispatch provider subcommands from parsed argparse namespace."""
+    list_verbose = bool(getattr(args, "verbose", False) or getattr(args, "debug", False))
     handlers: dict[str, Callable[[], int]] = {
-        "list": _cmd_provider_list,
+        "list": lambda: _cmd_provider_list(verbose=list_verbose),
         "status": lambda: _cmd_provider_status(output_json=args.output_json),
         "login": lambda: _cmd_provider_login(args.provider_name),
     }
@@ -2674,7 +2707,7 @@ def _install_summary_lines(config_path: Path) -> list[str]:
             if isinstance(item, dict) and bool(item.get("enabled")):
                 enabled_channels.append(str(name))
     channel_args = ",".join(enabled_channels) if enabled_channels else "local"
-    gateway_cmd = f"openheron gateway --channels {channel_args}"
+    gateway_cmd = f"openheron gateway run --channels {channel_args}"
 
     provider_cfg_dict = provider_cfg if isinstance(provider_cfg, dict) else {}
     channels_cfg_dict = channels_cfg if isinstance(channels_cfg, dict) else {}
@@ -3044,7 +3077,7 @@ def _cmd_install(
             _stdout_line("Install daemon setup complete.")
 
     if not non_interactive:
-        _stdout_line("Install complete. Next: run `openheron gateway`.")
+        _stdout_line("Install complete. Next: run `openheron gateway run`.")
     _render_install_action_plan_with_rich(
         commands=["openheron doctor", "openheron gateway"],
     )
@@ -4030,8 +4063,8 @@ def _gateway_service_exec_argv(channels: str) -> tuple[str, list[str]]:
 
     openheron_bin = shutil.which("openheron")
     if openheron_bin:
-        return openheron_bin, ["gateway", "--channels", channels]
-    return sys.executable, ["-m", "openheron.app.cli", "gateway", "--channels", channels]
+        return openheron_bin, ["gateway", "run", "--channels", channels]
+    return sys.executable, ["-m", "openheron.app.cli", "gateway", "run", "--channels", channels]
 
 
 def _run_gateway_service_enable(*, manager: str, manifest_path: Path, service_name: str) -> tuple[bool, str]:
@@ -4101,7 +4134,7 @@ def _cmd_gateway_service_install(*, force: bool, channels: str, enable: bool) ->
         disable_hint = f"systemctl --user disable --now {service_name}.service"
 
     manifest_path.write_text(manifest, encoding="utf-8")
-    _stdout_line("Gateway service install: this config lets OS user service manager run `openheron gateway`.")
+    _stdout_line("Gateway service install: this config lets OS user service manager run `openheron gateway run`.")
     _stdout_line(f"Gateway service manifest written: {manifest_path}")
     _stdout_line(f"Gateway service manager: {manager}")
     _stdout_line(f"Gateway service channels: {channels_value}")
@@ -4244,6 +4277,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Show minimal fix plan without writing config.",
     )
+    doctor_parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable colorized doctor text output.",
+    )
 
     run_parser = subparsers.add_parser("run", help="Run `adk run` for this agent.")
     run_parser.add_argument("adk_args", nargs=argparse.REMAINDER, help="Extra args passed to adk run.")
@@ -4255,17 +4293,17 @@ def main(argv: list[str] | None = None) -> None:
     gateway_parser.add_argument("--chat-id", default="terminal", help="Chat id used for inbound messages.")
     gateway_parser = subparsers.add_parser(
         "gateway",
-        help="Run gateway in foreground, or start/stop/restart/status background gateway process.",
+        help="Gateway runtime commands (run/start/stop/restart/status).",
         description=(
-            "Gateway runtime command. Without action it runs in foreground; with action "
-            "it manages the background gateway process."
+            "Gateway runtime command group. Use `run` for foreground runtime, or "
+            "`start/stop/restart/status` for background lifecycle management."
         ),
     )
     gateway_parser.add_argument(
         "gateway_action",
         nargs="?",
-        choices=["start", "stop", "restart", "status"],
-        help="Background gateway action (omit for foreground run).",
+        choices=["run", "start", "stop", "restart", "status"],
+        help="Gateway action. Use `run` for foreground runtime.",
     )
     gateway_parser.add_argument(
         "--channels",
@@ -4287,7 +4325,17 @@ def main(argv: list[str] | None = None) -> None:
     )
     provider_parser = subparsers.add_parser("provider", help="Manage runtime LLM providers.")
     provider_subparsers = provider_parser.add_subparsers(dest="provider_command", required=True)
-    provider_subparsers.add_parser("list", help="List providers available to openheron.")
+    provider_list_parser = provider_subparsers.add_parser("list", help="List providers available to openheron.")
+    provider_list_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show extended provider metadata (runtime, oauth flags).",
+    )
+    provider_list_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Alias of --verbose for provider list output.",
+    )
     provider_status_parser = provider_subparsers.add_parser("status", help="Show current provider runtime status.")
     provider_status_parser.add_argument(
         "--json",
@@ -4431,7 +4479,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     gateway_service_parser = subparsers.add_parser(
         "gateway-service",
-        help="Manage OS user service config (launchd/systemd) that runs `openheron gateway`.",
+        help="Manage OS user service config (launchd/systemd) that runs `openheron gateway run`.",
         description=(
             "Service-manager integration for gateway. This does not directly run foreground gateway; "
             "it installs/checks launchd/systemd user manifests used to auto-run gateway."
@@ -4444,7 +4492,7 @@ def main(argv: list[str] | None = None) -> None:
         "install",
         help="Install service manifest and optionally enable/start it.",
         description=(
-            "Write launchd/systemd user manifest that executes `openheron gateway --channels ...`.\n"
+            "Write launchd/systemd user manifest that executes `openheron gateway run --channels ...`.\n"
             "Use --enable to start service immediately via launchctl/systemctl."
         ),
     )
@@ -4510,6 +4558,29 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "provider":
         code = _dispatch_provider_command(args, parser)
     else:
+        def _dispatch_gateway_command() -> int:
+            action = getattr(args, "gateway_action", None)
+            if action is None:
+                gateway_parser.print_help()
+                return 0
+            if action == "run":
+                return _cmd_gateway(
+                    channels=args.channels,
+                    sender_id=args.sender_id,
+                    chat_id=args.chat_id,
+                    interactive_local=args.interactive_local,
+                )
+            if action == "start":
+                return _cmd_gateway_start(channels=args.channels, sender_id=args.sender_id, chat_id=args.chat_id)
+            if action == "stop":
+                return _cmd_gateway_stop()
+            if action == "restart":
+                return _cmd_gateway_restart(channels=args.channels, sender_id=args.sender_id, chat_id=args.chat_id)
+            if action == "status":
+                return _cmd_gateway_status(output_json=args.output_json)
+            gateway_parser.print_help()
+            return 2
+
         handlers: dict[str, Callable[[], int]] = {
             "install": lambda: _cmd_install(
                 force=args.force,
@@ -4527,25 +4598,11 @@ def main(argv: list[str] | None = None) -> None:
                 verbose=args.verbose,
                 fix=(args.fix or args.fix_dry_run),
                 fix_dry_run=args.fix_dry_run,
+                no_color=args.no_color,
             ),
             "run": lambda: _cmd_run(args.adk_args),
             "gateway-local": lambda: _cmd_gateway_local(sender_id=args.sender_id, chat_id=args.chat_id),
-            "gateway": lambda: (
-                _cmd_gateway_start(channels=args.channels, sender_id=args.sender_id, chat_id=args.chat_id)
-                if args.gateway_action == "start"
-                else _cmd_gateway_stop()
-                if args.gateway_action == "stop"
-                else _cmd_gateway_restart(channels=args.channels, sender_id=args.sender_id, chat_id=args.chat_id)
-                if args.gateway_action == "restart"
-                else _cmd_gateway_status(output_json=args.output_json)
-                if args.gateway_action == "status"
-                else _cmd_gateway(
-                    channels=args.channels,
-                    sender_id=args.sender_id,
-                    chat_id=args.chat_id,
-                    interactive_local=args.interactive_local,
-                )
-            ),
+            "gateway": _dispatch_gateway_command,
         }
         handler = handlers.get(args.command)
         if handler is None:

@@ -44,7 +44,7 @@ openheron doctor
 if [[ "${WITH_GATEWAY}" == "1" ]]; then
   echo "[smoke] running gateway probe"
   if command -v timeout >/dev/null 2>&1; then
-    timeout 5s openheron gateway --channels local || true
+    timeout 5s openheron gateway run --channels local || true
   else
     echo "[smoke] 'timeout' not found, skipping gateway probe"
   fi

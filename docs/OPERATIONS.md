@@ -210,7 +210,7 @@ python -m openheron.cli gateway-local
 ### 多通道模式（含 Feishu）
 
 ```bash
-openheron gateway --channels local,feishu --interactive-local
+openheron gateway run --channels local,feishu --interactive-local
 ```
 
 也可通过环境变量指定默认通道：

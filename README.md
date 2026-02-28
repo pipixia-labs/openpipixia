@@ -49,13 +49,13 @@ scripts/install_smoke.sh --with-gateway
 
 Gateway and gateway-service:
 
-- `openheron gateway`: run gateway runtime itself (foreground or background process management).
-- `openheron gateway-service`: manage OS user-service manifest (launchd/systemd) that runs `openheron gateway`.
+- `openheron gateway run`: run gateway runtime in foreground.
+- `openheron gateway-service`: manage OS user-service manifest (launchd/systemd) that runs `openheron gateway run`.
 
 Minimal examples:
 
 ```bash
-openheron gateway --channels local,feishu --interactive-local
+openheron gateway run --channels local,feishu --interactive-local
 openheron gateway status
 openheron gateway-service install --channels local,feishu --enable
 openheron gateway-service status
@@ -118,7 +118,7 @@ python -m openheron.cli -m "Describe what you can do" --user-id local --session-
 python -m openheron.cli gateway-local
 
 # multi-channel gateway runtime
-openheron gateway --channels local,feishu --interactive-local
+openheron gateway run --channels local,feishu --interactive-local
 openheron gateway-service install --channels local,feishu --enable
 openheron gateway-service status
 openheron doctor

@@ -146,7 +146,7 @@ python -m openheron.cli -m "Describe what you can do"
 python -m openheron.cli gateway-local
 
 # 网关多渠道模式
-openheron gateway --channels local,feishu --interactive-local
+openheron gateway run --channels local,feishu --interactive-local
 ```
 
 ### 6.3 测试

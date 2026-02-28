@@ -26,7 +26,7 @@ def test_render_launchd_plist_contains_required_sections() -> None:
     content = render_launchd_plist(
         label="ai.openheron.app.gateway",
         program="/usr/local/bin/openheron",
-        args=["gateway", "--channels", "local,feishu"],
+        args=["gateway", "run", "--channels", "local,feishu"],
         working_directory="/tmp/openheron",
         env={"OPENHERON_CHANNELS": "local,feishu"},
         stdout_path="/tmp/openheron/stdout.log",
@@ -47,7 +47,7 @@ def test_render_launchd_plist_contains_required_sections() -> None:
 def test_render_systemd_unit_contains_required_sections() -> None:
     content = render_systemd_unit(
         description="Openheron Gateway",
-        exec_start="/usr/local/bin/openheron gateway --channels local",
+        exec_start="/usr/local/bin/openheron gateway run --channels local",
         working_directory="/tmp/openheron",
         env={"OPENHERON_CHANNELS": "local", "OPENHERON_DEBUG": "1"},
     )
@@ -56,7 +56,7 @@ def test_render_systemd_unit_contains_required_sections() -> None:
     assert "Description=Openheron Gateway" in content
     assert "After=network-online.target" in content
     assert "[Service]" in content
-    assert "ExecStart=/usr/local/bin/openheron gateway --channels local" in content
+    assert "ExecStart=/usr/local/bin/openheron gateway run --channels local" in content
     assert 'Environment="OPENHERON_CHANNELS=local"' in content
     assert 'Environment="OPENHERON_DEBUG=1"' in content
     assert "WantedBy=default.target" in content

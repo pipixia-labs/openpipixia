@@ -197,6 +197,19 @@ class CLITests(unittest.TestCase):
                 )
                 mocked_bootstrap.assert_called_once()
 
+    def test_gateway_without_action_prints_help(self) -> None:
+        from openheron import cli
+
+        with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
+            with patch.object(cli.argparse.ArgumentParser, "print_help") as mocked_help:
+                with patch.object(cli, "_cmd_gateway", return_value=0) as mocked_gateway:
+                    with self.assertRaises(SystemExit) as ctx:
+                        cli.main(["gateway"])
+                self.assertEqual(ctx.exception.code, 0)
+                mocked_bootstrap.assert_called_once()
+                mocked_help.assert_called()
+                mocked_gateway.assert_not_called()
+
     def test_gateway_status_mode_dispatch_json(self) -> None:
         from openheron import cli
 
@@ -237,7 +250,9 @@ class CLITests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as ctx:
                     cli.main(["doctor", "--json", "--verbose"])
                 self.assertEqual(ctx.exception.code, 0)
-                mocked_doctor.assert_called_once_with(output_json=True, verbose=True, fix=False, fix_dry_run=False)
+                mocked_doctor.assert_called_once_with(
+                    output_json=True, verbose=True, fix=False, fix_dry_run=False, no_color=False
+                )
 
     def test_doctor_mode_passes_fix_flag(self) -> None:
         from openheron import cli
@@ -247,7 +262,9 @@ class CLITests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as ctx:
                     cli.main(["doctor", "--fix"])
                 self.assertEqual(ctx.exception.code, 0)
-                mocked_doctor.assert_called_once_with(output_json=False, verbose=False, fix=True, fix_dry_run=False)
+                mocked_doctor.assert_called_once_with(
+                    output_json=False, verbose=False, fix=True, fix_dry_run=False, no_color=False
+                )
 
     def test_doctor_mode_passes_fix_dry_run_flag(self) -> None:
         from openheron import cli
@@ -257,7 +274,21 @@ class CLITests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as ctx:
                     cli.main(["doctor", "--fix-dry-run"])
                 self.assertEqual(ctx.exception.code, 0)
-                mocked_doctor.assert_called_once_with(output_json=False, verbose=False, fix=True, fix_dry_run=True)
+                mocked_doctor.assert_called_once_with(
+                    output_json=False, verbose=False, fix=True, fix_dry_run=True, no_color=False
+                )
+
+    def test_doctor_mode_passes_no_color_flag(self) -> None:
+        from openheron import cli
+
+        with patch.object(cli, "bootstrap_env_from_config"):
+            with patch.object(cli, "_cmd_doctor", return_value=0) as mocked_doctor:
+                with self.assertRaises(SystemExit) as ctx:
+                    cli.main(["doctor", "--no-color"])
+                self.assertEqual(ctx.exception.code, 0)
+                mocked_doctor.assert_called_once_with(
+                    output_json=False, verbose=False, fix=False, fix_dry_run=False, no_color=True
+                )
 
     def test_mcps_mode_dispatch(self) -> None:
         from openheron import cli
@@ -301,17 +332,37 @@ class CLITests(unittest.TestCase):
                     cli.main(["provider", "list"])
                 self.assertEqual(ctx.exception.code, 0)
                 mocked_bootstrap.assert_called_once()
-                mocked_list.assert_called_once_with()
+                mocked_list.assert_called_once_with(verbose=False)
 
-    def test_cmd_provider_list_includes_runtime_and_default_model(self) -> None:
+    def test_provider_list_mode_dispatch_verbose(self) -> None:
+        from openheron import cli
+
+        with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
+            with patch.object(cli, "_cmd_provider_list", return_value=0) as mocked_list:
+                with self.assertRaises(SystemExit) as ctx:
+                    cli.main(["provider", "list", "--verbose"])
+                self.assertEqual(ctx.exception.code, 0)
+                mocked_bootstrap.assert_called_once()
+                mocked_list.assert_called_once_with(verbose=True)
+
+    def test_cmd_provider_list_default_hides_runtime(self) -> None:
         from openheron import cli
 
         with patch("builtins.print") as mocked_info:
-            code = cli._cmd_provider_list()
+            code = cli._cmd_provider_list(verbose=False)
         self.assertEqual(code, 0)
         lines = [call.args[0] for call in mocked_info.call_args_list if call.args]
-        self.assertTrue(any("openai_codex: runtime=codex" in line for line in lines))
+        self.assertFalse(any("runtime=" in line for line in lines))
         self.assertTrue(any("default_model=" in line for line in lines))
+
+    def test_cmd_provider_list_verbose_includes_runtime(self) -> None:
+        from openheron import cli
+
+        with patch("builtins.print") as mocked_info:
+            code = cli._cmd_provider_list(verbose=True)
+        self.assertEqual(code, 0)
+        lines = [call.args[0] for call in mocked_info.call_args_list if call.args]
+        self.assertTrue(any("openai_codex: default_model=" in line and "runtime=codex" in line for line in lines))
 
     def test_provider_status_mode_dispatch(self) -> None:
         from openheron import cli
@@ -985,7 +1036,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("channels.feishu.appSecret", lines[1])
         self.assertIn("Feishu credentials", lines[2])
         self.assertIn("next[1]=openheron doctor", lines[3])
-        self.assertIn("next[2]=openheron gateway --channels local,feishu", lines[4])
+        self.assertIn("next[2]=openheron gateway run --channels local,feishu", lines[4])
 
     def test_install_summary_lines_reports_next_commands_when_ready(self) -> None:
         from openheron import cli
@@ -1004,7 +1055,7 @@ class CLITests(unittest.TestCase):
 
         self.assertIn("no required fields missing", lines[1])
         self.assertIn("next[1]=openheron doctor", lines[2])
-        self.assertIn("next[2]=openheron gateway --channels local", lines[3])
+        self.assertIn("next[2]=openheron gateway run --channels local", lines[3])
 
     def test_install_summary_lines_reports_missing_dingtalk_and_slack_credentials(self) -> None:
         from openheron import cli
@@ -1285,6 +1336,7 @@ class CLITests(unittest.TestCase):
             content = manifest_path.read_text(encoding="utf-8")
             self.assertIn("/usr/local/bin/openheron", content)
             self.assertIn("<string>gateway</string>", content)
+            self.assertIn("<string>run</string>", content)
             lines = [call.args[0] for call in mocked_print.call_args_list if call.args]
             self.assertTrue(any("Gateway service manifest written:" in line for line in lines))
 

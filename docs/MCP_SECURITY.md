@@ -19,7 +19,7 @@
 
 1. 在 `~/.openheron/config.json` 配置 `tools.mcpServers`
 2. 执行 `openheron doctor` 查看服务健康状态与工具列表
-3. 启动 `openheron gateway`
+3. 启动 `openheron gateway run`
 4. 在对话中调用 MCP 工具（例如 `mcp_filesystem_...`）
 
 ### 内置 GUI MCP（推荐）
