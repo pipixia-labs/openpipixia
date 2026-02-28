@@ -20,10 +20,8 @@ from pathlib import Path
 from typing import Any, Callable, Literal
 from urllib.parse import urlparse
 
-from google.genai import types
 from loguru import logger
 
-from ..channels.factory import build_channel_manager, parse_enabled_channels, validate_channel_setup
 from ..core.config import (
     bootstrap_env_from_config,
     default_config,
@@ -40,12 +38,6 @@ from ..core.env_utils import env_enabled, is_enabled
 from ..core import doctor_rules, install_rules
 from ..core.logging_utils import debug_logging_enabled, emit_debug
 from ..core.gui_mcp import resolve_gui_mcp_from_env, resolve_gui_mcp_from_summaries
-from ..core.mcp_registry import (
-    ManagedMcpToolset,
-    build_mcp_toolsets_from_env,
-    probe_mcp_toolsets,
-    summarize_mcp_toolsets,
-)
 from ..core.onboarding_adapters import (
     ApiKeyProviderOnboardingAdapter,
     resolve_channel_onboarding_adapter,
@@ -62,7 +54,6 @@ from ..core.provider import (
     validate_provider_runtime,
 )
 from ..core.provider_registry import find_provider_spec
-from ..runtime.adk_utils import extract_text, merge_text_stream
 from ..runtime.cron_helpers import cron_store_path, format_schedule, format_timestamp_ms
 from ..runtime.cron_service import CronService
 from ..runtime.cron_schedule_parser import parse_schedule_input
@@ -75,10 +66,11 @@ from ..runtime.gateway_service import (
     render_systemd_unit,
 )
 from ..runtime.message_time import inject_request_time
-from ..runtime.runner_factory import create_runner
-from ..runtime.session_service import load_session_config
 from ..core.security import load_security_policy
 from ..tooling.skills_adapter import get_registry
+from . import cli_runtime_surface
+from . import cli_runtime_ops
+from . import cli_gateway_surface
 
 
 def _stdout_line(message: str) -> None:
@@ -97,6 +89,101 @@ def _parse_csv_list(raw: str) -> list[str]:
         seen.add(name)
         names.append(name)
     return names
+
+
+def _parse_enabled_channels(raw: str | None) -> list[str]:
+    from ..channels.factory import parse_enabled_channels
+
+    return parse_enabled_channels(raw)
+
+
+def _validate_channel_setup(names: list[str]) -> list[str]:
+    from ..channels.factory import validate_channel_setup
+
+    return validate_channel_setup(names)
+
+
+def _build_channel_manager(*, bus: Any, channel_names: list[str], local_writer: Callable[[str], None]) -> tuple[Any, Any]:
+    from ..channels.factory import build_channel_manager
+
+    return build_channel_manager(bus=bus, channel_names=channel_names, local_writer=local_writer)
+
+
+# Backward-compatible patch points for tests and integrations.
+parse_enabled_channels = _parse_enabled_channels
+validate_channel_setup = _validate_channel_setup
+build_channel_manager = _build_channel_manager
+
+
+def _load_mcp_registry_symbols() -> tuple[Any, Any, Any, Any]:
+    """Load MCP registry symbols lazily to keep lightweight commands fast."""
+    from ..core import mcp_registry as _mcp_registry
+
+    return (
+        _mcp_registry.ManagedMcpToolset,
+        _mcp_registry.build_mcp_toolsets_from_env,
+        _mcp_registry.probe_mcp_toolsets,
+        _mcp_registry.summarize_mcp_toolsets,
+    )
+
+
+class ManagedMcpToolset:  # Compatibility proxy for tests patching cli.ManagedMcpToolset.get_tools
+    @staticmethod
+    async def get_tools(toolset: Any) -> Any:
+        real_cls, *_ = _load_mcp_registry_symbols()
+        return await real_cls.get_tools(toolset)
+
+
+def build_mcp_toolsets_from_env(*args: Any, **kwargs: Any) -> list[Any]:
+    _, build_fn, _, _ = _load_mcp_registry_symbols()
+    return build_fn(*args, **kwargs)
+
+
+async def probe_mcp_toolsets(*args: Any, **kwargs: Any) -> Any:
+    _, _, probe_fn, _ = _load_mcp_registry_symbols()
+    return await probe_fn(*args, **kwargs)
+
+
+def summarize_mcp_toolsets(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+    _, _, _, summarize_fn = _load_mcp_registry_symbols()
+    return summarize_fn(*args, **kwargs)
+
+
+def _load_runtime_adk_utils_symbols() -> tuple[Any, Any]:
+    """Load ADK text helpers lazily to avoid session stack import at startup."""
+    from ..runtime import adk_utils as _adk_utils
+
+    return _adk_utils.extract_text, _adk_utils.merge_text_stream
+
+
+def extract_text(*args: Any, **kwargs: Any) -> Any:
+    extract_text_fn, _ = _load_runtime_adk_utils_symbols()
+    return extract_text_fn(*args, **kwargs)
+
+
+def merge_text_stream(*args: Any, **kwargs: Any) -> Any:
+    _, merge_text_stream_fn = _load_runtime_adk_utils_symbols()
+    return merge_text_stream_fn(*args, **kwargs)
+
+
+def _load_runner_factory_symbol() -> Any:
+    from ..runtime import runner_factory as _runner_factory
+
+    return _runner_factory.create_runner
+
+
+def create_runner(*args: Any, **kwargs: Any) -> Any:
+    return _load_runner_factory_symbol()(*args, **kwargs)
+
+
+def _load_session_service_symbol() -> Any:
+    from ..runtime import session_service as _session_service
+
+    return _session_service.load_session_config
+
+
+def load_session_config(*args: Any, **kwargs: Any) -> Any:
+    return _load_session_service_symbol()(*args, **kwargs)
 
 
 def _read_env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
@@ -272,227 +359,38 @@ def _load_mcp_probe_policy(*, timeout_env_name: str, timeout_default: float) -> 
 
 
 def _cmd_skills(*, agent: str | None = None) -> int:
-    target_agents, error = _resolve_target_agent_names(agent=agent)
-    if error:
-        _stdout_line(error)
-        return 1
-    if target_agents:
-        if agent:
-            code, out, err = _run_agent_cli_command(agent_name=target_agents[0], args=["skills"])
-            if out.strip():
-                _stdout_line(out.strip())
-            if err.strip():
-                _stdout_line(err.strip())
-            return 0 if code == 0 else 1
-
-        merged: list[dict[str, Any]] = []
-        failures: list[str] = []
-        for agent_name in target_agents:
-            code, out, err = _run_agent_cli_command(agent_name=agent_name, args=["skills"])
-            if code != 0:
-                detail = err.strip() or out.strip() or f"exit_code={code}"
-                failures.append(f"{agent_name}: {detail}")
-                continue
-            try:
-                payload = json.loads(out)
-            except Exception:
-                failures.append(f"{agent_name}: invalid JSON output")
-                continue
-            if not isinstance(payload, list):
-                failures.append(f"{agent_name}: invalid JSON payload type")
-                continue
-            for item in payload:
-                if not isinstance(item, dict):
-                    continue
-                row = dict(item)
-                row["agent"] = agent_name
-                merged.append(row)
-        _stdout_line(json.dumps(merged, ensure_ascii=False, indent=2))
-        if failures:
-            _stdout_line(f"[warn] skills failed for agents: {'; '.join(failures)}")
-            return 1
-        return 0
-
-    registry = get_registry()
-    payload = [
-        {
-            "name": info.name,
-            "description": info.description,
-            "source": info.source,
-            "location": str(info.path),
-        }
-        for info in registry.list_skills()
-    ]
-    _stdout_line(json.dumps(payload, ensure_ascii=False, indent=2))
-    return 0
+    return cli_runtime_surface.cmd_skills(
+        agent=agent,
+        stdout_line=_stdout_line,
+        resolve_target_agent_names=lambda value: _resolve_target_agent_names(agent=value),
+        run_agent_cli_command=lambda name, args: _run_agent_cli_command(agent_name=name, args=args),
+    )
 
 
 async def _collect_connected_mcp_apis(
-    toolsets: list[ManagedMcpToolset],
+    toolsets: list[Any],
     *,
     timeout_seconds: float,
 ) -> dict[str, list[dict[str, str]]]:
-    """Fetch API details for already-connected MCP toolsets."""
-
-    def _pick_schema(raw_tool: Any, schema_name: str) -> Any:
-        """Read one schema field from MCP raw tool using camel/snake conventions."""
-        value = getattr(raw_tool, schema_name, None)
-        if value is not None:
-            return value
-        if schema_name == "inputSchema":
-            return getattr(raw_tool, "input_schema", None)
-        if schema_name == "outputSchema":
-            return getattr(raw_tool, "output_schema", None)
-        return None
-
-    def _schema_summary(schema: Any) -> str:
-        """Render a concise schema summary focused on input/output fields."""
-        if schema is None:
-            return "(未声明)"
-        if isinstance(schema, dict):
-            schema_type = str(schema.get("type", ""))
-            properties = schema.get("properties", {})
-            required = schema.get("required", [])
-            if isinstance(properties, dict) and properties:
-                required_names = set(required) if isinstance(required, list) else set()
-                names: list[str] = []
-                for key in properties.keys():
-                    key_str = str(key)
-                    if key_str in required_names:
-                        names.append(f"{key_str}(required)")
-                    else:
-                        names.append(key_str)
-                prefix = f"type={schema_type}; " if schema_type else ""
-                return f"{prefix}fields={', '.join(names)}"
-            if schema_type:
-                return f"type={schema_type}"
-        try:
-            rendered = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
-        except Exception:
-            rendered = str(schema)
-        if len(rendered) > 240:
-            rendered = rendered[:237] + "..."
-        return rendered
-
-    async def _collect_one(toolset: ManagedMcpToolset) -> tuple[str, list[dict[str, str]]]:
-        api_rows: list[dict[str, str]] = []
-        try:
-            tools = await asyncio.wait_for(
-                ManagedMcpToolset.get_tools(toolset),
-                timeout=max(1.0, float(timeout_seconds)),
-            )
-        except Exception:
-            return toolset.meta.name, api_rows
-        for tool in tools:
-            name = str(getattr(tool, "name", "") or "").strip()
-            if not name:
-                continue
-            raw_tool = getattr(tool, "raw_mcp_tool", None)
-            description = ""
-            input_summary = "(未声明)"
-            output_summary = "(未声明)"
-            if raw_tool is not None:
-                description = (
-                    str(getattr(raw_tool, "description", "") or getattr(raw_tool, "title", "") or "").strip()
-                )
-                input_summary = _schema_summary(_pick_schema(raw_tool, "inputSchema"))
-                output_summary = _schema_summary(_pick_schema(raw_tool, "outputSchema"))
-            if not description:
-                description = str(getattr(tool, "description", "") or "").strip() or "(未提供)"
-            api_rows.append(
-                {
-                    "name": name,
-                    "description": description,
-                    "input": input_summary,
-                    "output": output_summary,
-                }
-            )
-        api_rows.sort(key=lambda item: item.get("name", ""))
-        return toolset.meta.name, api_rows
-
-    pairs = await asyncio.gather(*[_collect_one(toolset) for toolset in toolsets])
-    return {name: rows for name, rows in pairs}
+    return await cli_runtime_surface.collect_connected_mcp_apis(
+        toolsets,
+        timeout_seconds=timeout_seconds,
+        get_tools_fn=ManagedMcpToolset.get_tools,
+    )
 
 
 def _cmd_mcps(*, agent: str | None = None) -> int:
-    """List connected MCP servers and available APIs for each server."""
-    target_agents, error = _resolve_target_agent_names(agent=agent)
-    if error:
-        _stdout_line(error)
-        return 1
-    if target_agents:
-        results: list[tuple[str, int, str, str]] = []
-        for agent_name in target_agents:
-            code, out, err = _run_agent_cli_command(agent_name=agent_name, args=["mcps"])
-            results.append((agent_name, code, out, err))
-        return _print_agent_output_sections(results)
-
-    toolsets = build_mcp_toolsets_from_env(log_registered=False)
-    if not toolsets:
-        _stdout_line("MCP: no servers configured")
-        return 0
-
-    async def _run_mcps() -> tuple[int, list[dict[str, Any]], dict[str, list[dict[str, str]]]]:
-        probe_policy = _load_mcp_probe_policy(
-            timeout_env_name="OPENHERON_MCP_LIST_TIMEOUT_SECONDS",
-            timeout_default=5.0,
-        )
-        toolsets_by_name = {toolset.meta.name: toolset for toolset in toolsets}
-        try:
-            results = await probe_mcp_toolsets(
-                toolsets,
-                timeout_seconds=probe_policy.timeout_seconds,
-                retry_attempts=probe_policy.retry_attempts,
-                retry_backoff_seconds=probe_policy.retry_backoff_seconds,
-            )
-            connected_names = [str(item.get("name", "")) for item in results if str(item.get("status")) == "ok"]
-            if not connected_names:
-                return 0, results, {}
-            connected_toolsets = [toolsets_by_name[name] for name in connected_names if name in toolsets_by_name]
-            api_names_by_server = await _collect_connected_mcp_apis(
-                connected_toolsets,
-                timeout_seconds=probe_policy.timeout_seconds,
-            )
-            return 0, results, api_names_by_server
-        finally:
-            # Keep MCP session cleanup on the same event loop as probe/list calls
-            # to avoid "original event loop is closed" warnings from ADK.
-            for toolset in toolsets:
-                try:
-                    await toolset.close()
-                except Exception:
-                    continue
-
-    try:
-        code, results, api_names_by_server = asyncio.run(_run_mcps())
-    except Exception as exc:
-        _stdout_line(f"MCP probe failed: {exc}")
-        return 1
-    if code != 0:
-        return code
-
-    connected = [item for item in results if str(item.get("status")) == "ok"]
-    if not connected:
-        _stdout_line("MCP: no connected servers")
-        return 0
-
-    _stdout_line(f"Connected MCP servers: {len(connected)}")
-    _stdout_line("")
-    for item in connected:
-        server_name = str(item.get("name", "unknown"))
-        transport = str(item.get("transport", "unknown"))
-        api_rows = api_names_by_server.get(server_name, [])
-        _stdout_line(f"- {server_name} ({transport}) | APIs: {len(api_rows)}")
-        if not api_rows:
-            _stdout_line("  (none)")
-            _stdout_line("")
-            continue
-        for api in api_rows:
-            api_name = str(api.get("name", "")).strip()
-            api_description = str(api.get("description", "(未提供)")).strip() or "(未提供)"
-            _stdout_line(f"  - {api_name}: {api_description}")
-        _stdout_line("")
-    return 0
+    return cli_runtime_surface.cmd_mcps(
+        agent=agent,
+        stdout_line=_stdout_line,
+        resolve_target_agent_names=lambda value: _resolve_target_agent_names(agent=value),
+        run_agent_cli_command=lambda name, args: _run_agent_cli_command(agent_name=name, args=args),
+        print_agent_output_sections=_print_agent_output_sections,
+        load_mcp_probe_policy=_load_mcp_probe_policy,
+        build_mcp_toolsets_from_env_fn=build_mcp_toolsets_from_env,
+        probe_mcp_toolsets_fn=probe_mcp_toolsets,
+        collect_connected_mcp_apis_fn=_collect_connected_mcp_apis,
+    )
 
 
 def _subagent_log_path() -> Path:
@@ -522,37 +420,14 @@ def _read_subagent_records(*, limit: int = 50) -> list[dict[str, Any]]:
 
 
 def _cmd_spawn(*, agent: str | None = None) -> int:
-    """List sub-agent tasks created by `spawn_subagent`."""
-    target_agents, error = _resolve_target_agent_names(agent=agent)
-    if error:
-        _stdout_line(error)
-        return 1
-    if target_agents:
-        results: list[tuple[str, int, str, str]] = []
-        for agent_name in target_agents:
-            code, out, err = _run_agent_cli_command(agent_name=agent_name, args=["spawn"])
-            results.append((agent_name, code, out, err))
-        return _print_agent_output_sections(results)
-
-    records = _read_subagent_records(limit=50)
-    if not records:
-        _stdout_line("Subagents: none")
-        return 0
-
-    _stdout_line(f"Subagents: {len(records)} recent task(s)")
-    for item in records:
-        task_id = str(item.get("task_id", "unknown"))
-        status = str(item.get("status", "unknown"))
-        channel = str(item.get("channel", "unknown"))
-        chat_id = str(item.get("chat_id", "unknown"))
-        created_at = str(item.get("timestamp", ""))
-        prompt_preview = str(item.get("prompt_preview", "")).strip()
-        _stdout_line(
-            f"- {task_id} status={status} target={channel}:{chat_id} created_at={created_at}"
-        )
-        if prompt_preview:
-            _stdout_line(f"  prompt: {prompt_preview}")
-    return 0
+    return cli_runtime_surface.cmd_spawn(
+        agent=agent,
+        stdout_line=_stdout_line,
+        resolve_target_agent_names=lambda value: _resolve_target_agent_names(agent=value),
+        run_agent_cli_command=lambda name, args: _run_agent_cli_command(agent_name=name, args=args),
+        print_agent_output_sections=_print_agent_output_sections,
+        read_subagent_records=lambda limit: _read_subagent_records(limit=limit),
+    )
 
 
 def _check_openai_codex_oauth() -> tuple[bool, str]:
@@ -3552,153 +3427,45 @@ def _collect_running_multi_agent_entries(meta: dict[str, Any]) -> list[dict[str,
 
 
 def _cmd_gateway_start_single(*, channels: str | None, sender_id: str, chat_id: str) -> int:
-    """Start one gateway background process and persist runtime state."""
-    existing = _read_gateway_pid()
-    if existing and _is_pid_running(existing):
-        _stdout_line(f"Gateway service already running (pid={existing}).")
-        _stdout_line("Use `openheron gateway status` or `openheron gateway restart`.")
-        return 0
-
-    if existing and not _is_pid_running(existing):
-        _gateway_cleanup_runtime_files()
-
-    channels_value = ",".join(parse_enabled_channels(channels))
-    config_path = get_config_path()
-    cmd = [
-        sys.executable,
-        "-m",
-        "openheron.app.cli",
-        "--config-path",
-        str(config_path),
-        "gateway",
-        "--channels",
-        channels_value,
-        "--sender-id",
-        sender_id,
-        "--chat-id",
-        chat_id,
-    ]
-    env = dict(os.environ)
-    env["OPENHERON_GATEWAY_BG"] = "1"
-    env["OPENHERON_DEBUG_LOG_PATH"] = str(_gateway_debug_log_path())
-
-    stdout_path = _gateway_stdout_log_path()
-    stderr_path = _gateway_stderr_log_path()
-    stdout_path.parent.mkdir(parents=True, exist_ok=True)
-    with stdout_path.open("a", encoding="utf-8") as stdout_fh, stderr_path.open("a", encoding="utf-8") as stderr_fh:
-        try:
-            proc = subprocess.Popen(
-                cmd,
-                stdout=stdout_fh,
-                stderr=stderr_fh,
-                stdin=subprocess.DEVNULL,
-                start_new_session=True,
-                env=env,
-            )
-        except Exception as exc:
-            _stdout_line(f"Gateway service start failed: {exc}")
-            return 1
-
-    _gateway_pid_path().write_text(f"{proc.pid}\n", encoding="utf-8")
-    _write_gateway_runtime_metadata(pid=proc.pid, channels=channels_value, command=cmd)
-    _stdout_line(f"Gateway service started (pid={proc.pid}).")
-    _stdout_line(f"Logs: {_gateway_log_dir()}")
-    return 0
+    return cli_gateway_surface.cmd_gateway_start_single(
+        channels=channels,
+        sender_id=sender_id,
+        chat_id=chat_id,
+        stdout_line=_stdout_line,
+        read_gateway_pid=_read_gateway_pid,
+        is_pid_running=_is_pid_running,
+        gateway_cleanup_runtime_files=lambda: _gateway_cleanup_runtime_files(),
+        parse_enabled_channels=parse_enabled_channels,
+        get_config_path=get_config_path,
+        gateway_debug_log_path=_gateway_debug_log_path,
+        gateway_stdout_log_path=_gateway_stdout_log_path,
+        gateway_stderr_log_path=_gateway_stderr_log_path,
+        write_gateway_runtime_metadata=lambda pid, channels, command: _write_gateway_runtime_metadata(
+            pid=pid,
+            channels=channels,
+            command=command,
+        ),
+        gateway_log_dir=_gateway_log_dir,
+    )
 
 
 def _cmd_gateway_start_multi(*, channels: str | None, sender_id: str, chat_id: str) -> int:
-    """Start one gateway background process per enabled agent config."""
-    channels_override = ",".join(parse_enabled_channels(channels)) if channels is not None else ""
-    enabled_agents = _global_enabled_agent_names()
-    if not enabled_agents:
-        _stdout_line("Gateway multi-agent start skipped: no enabled agents in global_config.json.")
-        return 1
-
-    config_paths: dict[str, Path] = {}
-    for agent_name in enabled_agents:
-        config_path = _agent_config_path(agent_name)
-        if not config_path.exists():
-            _stdout_line(
-                f"[warn] agent '{agent_name}' missing config: {config_path}. "
-                "Skipping this agent."
-            )
-            continue
-        config_paths[agent_name] = config_path
-    if not config_paths:
-        _stdout_line("Gateway multi-agent start failed: no valid agent config file found.")
-        return 1
-
-    for warning in _multi_agent_channel_conflict_warnings(config_paths):
-        _stdout_line(f"[warn] {warning}")
-    for warning in _multi_agent_workspace_warnings(config_paths):
-        _stdout_line(f"[warn] {warning}")
-
-    started_entries: list[dict[str, Any]] = []
-    failed_agents: list[str] = []
-    for agent_name, config_path in config_paths.items():
-        cmd = [
-            sys.executable,
-            "-m",
-            "openheron.app.cli",
-            "--config-path",
-            str(config_path),
-            "gateway",
-            "--sender-id",
-            sender_id,
-            "--chat-id",
-            chat_id,
-        ]
-        if channels_override:
-            cmd.extend(["--channels", channels_override])
-        stdout_path, stderr_path, debug_path = _agent_gateway_log_paths(agent_name, config_path)
-        env = dict(os.environ)
-        env["OPENHERON_GATEWAY_BG"] = "1"
-        env["OPENHERON_DEBUG_LOG_PATH"] = str(debug_path)
-
-        with stdout_path.open("a", encoding="utf-8") as stdout_fh, stderr_path.open("a", encoding="utf-8") as stderr_fh:
-            try:
-                proc = subprocess.Popen(
-                    cmd,
-                    stdout=stdout_fh,
-                    stderr=stderr_fh,
-                    stdin=subprocess.DEVNULL,
-                    start_new_session=True,
-                    env=env,
-                )
-            except Exception as exc:
-                _stdout_line(f"[warn] agent '{agent_name}' start failed: {exc}")
-                failed_agents.append(agent_name)
-                continue
-
-        started_entries.append(
-            {
-                "agent": agent_name,
-                "pid": proc.pid,
-                "configPath": str(config_path),
-                "startedAt": dt.datetime.now().astimezone().isoformat(),
-                "command": cmd,
-                "logs": {
-                    "stdout": str(stdout_path),
-                    "stderr": str(stderr_path),
-                    "debug": str(debug_path),
-                },
-            }
-        )
-        _stdout_line(f"Gateway agent started: agent={agent_name}, pid={proc.pid}")
-
-    if not started_entries:
-        _stdout_line("Gateway multi-agent start failed: no agent process started.")
-        return 1
-
-    _write_gateway_multi_runtime_metadata(
-        channels_override=channels_override,
-        agent_entries=started_entries,
+    return cli_gateway_surface.cmd_gateway_start_multi(
+        channels=channels,
+        sender_id=sender_id,
+        chat_id=chat_id,
+        stdout_line=_stdout_line,
+        parse_enabled_channels=parse_enabled_channels,
+        global_enabled_agent_names=_global_enabled_agent_names,
+        agent_config_path=_agent_config_path,
+        multi_agent_channel_conflict_warnings=_multi_agent_channel_conflict_warnings,
+        multi_agent_workspace_warnings=_multi_agent_workspace_warnings,
+        agent_gateway_log_paths=_agent_gateway_log_paths,
+        write_gateway_multi_runtime_metadata=lambda channels_override, agent_entries: _write_gateway_multi_runtime_metadata(
+            channels_override=channels_override,
+            agent_entries=agent_entries,
+        ),
     )
-    _stdout_line(f"Gateway multi-agent service started: agents={len(started_entries)}")
-    if failed_agents:
-        _stdout_line(f"[warn] Failed agents: {', '.join(sorted(failed_agents))}")
-        return 1
-    return 0
 
 
 def _cmd_gateway_start(*, channels: str | None, sender_id: str, chat_id: str) -> int:
@@ -3730,115 +3497,36 @@ def _cmd_gateway_start(*, channels: str | None, sender_id: str, chat_id: str) ->
 
 
 def _stop_gateway_pid(pid: int, *, timeout_seconds: float) -> tuple[bool, bool]:
-    """Stop one pid. Returns (stopped, forced)."""
-    if pid <= 0:
-        return True, False
-    if not _is_pid_running(pid):
-        return True, False
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except Exception:
-        return False, False
-
-    deadline = time.time() + max(1.0, timeout_seconds)
-    while time.time() < deadline:
-        if not _is_pid_running(pid):
-            return True, False
-        time.sleep(0.15)
-
-    try:
-        os.kill(pid, signal.SIGKILL)
-    except Exception:
-        return False, False
-    return (not _is_pid_running(pid)), True
+    return cli_gateway_surface.stop_gateway_pid(
+        pid=pid,
+        timeout_seconds=timeout_seconds,
+        is_pid_running=_is_pid_running,
+    )
 
 
 def _cmd_gateway_stop_single(*, timeout_seconds: float = 8.0) -> int:
-    """Stop one gateway background process by pid file."""
-    pid = _read_gateway_pid()
-    if not pid:
-        _stdout_line("Gateway service is not running (no pid file).")
-        return 0
-    if not _is_pid_running(pid):
-        _gateway_cleanup_runtime_files()
-        _stdout_line("Gateway service is not running (stale pid file removed).")
-        return 0
-
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except Exception as exc:
-        _stdout_line(f"Gateway service stop failed: {exc}")
-        return 1
-
-    deadline = time.time() + max(1.0, timeout_seconds)
-    while time.time() < deadline:
-        if not _is_pid_running(pid):
-            _gateway_cleanup_runtime_files()
-            _stdout_line("Gateway service stopped.")
-            return 0
-        time.sleep(0.15)
-
-    try:
-        os.kill(pid, signal.SIGKILL)
-    except Exception as exc:
-        _stdout_line(f"Gateway service stop timeout and kill failed: {exc}")
-        return 1
-
-    _gateway_cleanup_runtime_files()
-    _stdout_line("Gateway service stopped (forced).")
-    return 0
+    return cli_gateway_surface.cmd_gateway_stop_single(
+        timeout_seconds=timeout_seconds,
+        stdout_line=_stdout_line,
+        read_gateway_pid=_read_gateway_pid,
+        is_pid_running=_is_pid_running,
+        gateway_cleanup_runtime_files=lambda: _gateway_cleanup_runtime_files(),
+    )
 
 
 def _cmd_gateway_stop_multi(*, timeout_seconds: float = 8.0) -> int:
-    """Stop all gateway background processes tracked by multi-agent metadata."""
-    meta = _read_gateway_multi_runtime_metadata()
-    entries = meta.get("agents")
-    if not isinstance(entries, list) or not entries:
-        _gateway_cleanup_multi_runtime_files()
-        _stdout_line("Gateway multi-agent service is not running.")
-        return 0
-
-    failures: list[str] = []
-    forced_count = 0
-    stopped_count = 0
-    for item in entries:
-        if not isinstance(item, dict):
-            continue
-        agent = str(item.get("agent", "unknown")).strip() or "unknown"
-        try:
-            pid = int(item.get("pid", 0))
-        except Exception:
-            pid = 0
-        if pid <= 0:
-            continue
-        stopped, forced = _stop_gateway_pid(pid, timeout_seconds=timeout_seconds)
-        if not stopped:
-            failures.append(f"{agent}(pid={pid})")
-            continue
-        if forced:
-            forced_count += 1
-        stopped_count += 1
-
-    still_running = _collect_running_multi_agent_entries(meta)
-    if still_running:
-        _write_gateway_multi_runtime_metadata(
-            channels_override=str(meta.get("channelsOverride", "")).strip(),
-            agent_entries=still_running,
-        )
-    else:
-        _gateway_cleanup_multi_runtime_files()
-
-    if failures or still_running:
-        if failures:
-            _stdout_line(f"Gateway multi-agent stop failed for: {', '.join(failures)}")
-        if still_running:
-            names = [str(item.get("agent", "unknown")) for item in still_running]
-            _stdout_line(f"Gateway multi-agent still running: {', '.join(names)}")
-        return 1
-
-    suffix = " (forced)" if forced_count > 0 else ""
-    _stdout_line(f"Gateway multi-agent service stopped: agents={stopped_count}{suffix}.")
-    return 0
+    return cli_gateway_surface.cmd_gateway_stop_multi(
+        timeout_seconds=timeout_seconds,
+        stdout_line=_stdout_line,
+        read_gateway_multi_runtime_metadata=_read_gateway_multi_runtime_metadata,
+        gateway_cleanup_multi_runtime_files=_gateway_cleanup_multi_runtime_files,
+        collect_running_multi_agent_entries=_collect_running_multi_agent_entries,
+        write_gateway_multi_runtime_metadata=lambda channels_override, agent_entries: _write_gateway_multi_runtime_metadata(
+            channels_override=channels_override,
+            agent_entries=agent_entries,
+        ),
+        stop_gateway_pid_fn=lambda pid, timeout: _stop_gateway_pid(pid, timeout_seconds=timeout),
+    )
 
 
 def _cmd_gateway_stop(*, timeout_seconds: float = 8.0) -> int:
@@ -3850,100 +3538,28 @@ def _cmd_gateway_stop(*, timeout_seconds: float = 8.0) -> int:
 
 
 def _cmd_gateway_status_single(*, output_json: bool) -> int:
-    """Show single-process gateway background status."""
-    pid = _read_gateway_pid()
-    running = bool(pid and _is_pid_running(pid))
-    if pid and not running:
-        _gateway_cleanup_runtime_files()
-        pid = None
-    meta = _read_gateway_runtime_metadata()
-    payload: dict[str, Any] = {
-        "running": running,
-        "pid": pid,
-        "logsDir": str(_gateway_log_dir()),
-        "stdoutLog": str(_gateway_stdout_log_path()),
-        "stderrLog": str(_gateway_stderr_log_path()),
-        "debugLog": str(_gateway_debug_log_path()),
-    }
-    if meta:
-        payload["meta"] = meta
-
-    if output_json:
-        _stdout_line(json.dumps(payload, ensure_ascii=False))
-        return 0
-
-    if not running:
-        _stdout_line("Gateway service status: stopped")
-        _stdout_line(f"Logs directory: {payload['logsDir']}")
-        return 0
-
-    _stdout_line(
-        "Gateway service status: "
-        f"running pid={pid}, logs={payload['logsDir']}"
+    return cli_gateway_surface.cmd_gateway_status_single(
+        output_json=output_json,
+        stdout_line=_stdout_line,
+        read_gateway_pid=_read_gateway_pid,
+        is_pid_running=_is_pid_running,
+        gateway_cleanup_runtime_files=lambda: _gateway_cleanup_runtime_files(),
+        read_gateway_runtime_metadata=_read_gateway_runtime_metadata,
+        gateway_log_dir=_gateway_log_dir,
+        gateway_stdout_log_path=_gateway_stdout_log_path,
+        gateway_stderr_log_path=_gateway_stderr_log_path,
+        gateway_debug_log_path=_gateway_debug_log_path,
     )
-    if isinstance(meta, dict):
-        channels = str(meta.get("channels", "")).strip()
-        started_at = str(meta.get("startedAt", "")).strip()
-        if channels:
-            _stdout_line(f"Channels: {channels}")
-        if started_at:
-            _stdout_line(f"Started at: {started_at}")
-    return 0
 
 
 def _cmd_gateway_status_multi(*, output_json: bool) -> int:
-    """Show multi-agent gateway background status."""
-    meta = _read_gateway_multi_runtime_metadata()
-    entries = meta.get("agents")
-    if not isinstance(entries, list):
-        entries = []
-    rows: list[dict[str, Any]] = []
-    for item in entries:
-        if not isinstance(item, dict):
-            continue
-        row = dict(item)
-        try:
-            pid = int(row.get("pid", 0))
-        except Exception:
-            pid = 0
-        row["running"] = bool(pid and _is_pid_running(pid))
-        rows.append(row)
-    running_rows = [row for row in rows if bool(row.get("running"))]
-
-    payload: dict[str, Any] = {
-        "mode": "multi-agent",
-        "running": bool(running_rows),
-        "runningCount": len(running_rows),
-        "agentCount": len(rows),
-        "logsDir": str(_gateway_log_dir()),
-        "meta": {
-            "channelsOverride": str(meta.get("channelsOverride", "")).strip(),
-            "startedAt": str(meta.get("startedAt", "")).strip(),
-        },
-        "agents": rows,
-    }
-    if output_json:
-        _stdout_line(json.dumps(payload, ensure_ascii=False))
-        return 0
-
-    if not rows:
-        _stdout_line("Gateway multi-agent service status: stopped")
-        _stdout_line(f"Logs directory: {payload['logsDir']}")
-        return 0
-
-    _stdout_line(
-        "Gateway multi-agent service status: "
-        f"running={payload['runningCount']}/{payload['agentCount']}, logs={payload['logsDir']}"
+    return cli_gateway_surface.cmd_gateway_status_multi(
+        output_json=output_json,
+        stdout_line=_stdout_line,
+        read_gateway_multi_runtime_metadata=_read_gateway_multi_runtime_metadata,
+        is_pid_running=_is_pid_running,
+        gateway_log_dir=_gateway_log_dir,
     )
-    for row in rows:
-        agent = str(row.get("agent", "unknown"))
-        pid = row.get("pid")
-        state = "running" if row.get("running") else "stopped"
-        _stdout_line(f"- {agent}: {state}, pid={pid}")
-    channels_override = str(meta.get("channelsOverride", "")).strip()
-    if channels_override:
-        _stdout_line(f"Channels override: {channels_override}")
-    return 0
 
 
 def _cmd_gateway_status(*, output_json: bool) -> int:
@@ -3955,11 +3571,10 @@ def _cmd_gateway_status(*, output_json: bool) -> int:
 
 
 def _cmd_gateway_restart(*, channels: str | None, sender_id: str, chat_id: str) -> int:
-    """Restart gateway background process(es)."""
-    stop_code = _cmd_gateway_stop()
-    if stop_code != 0:
-        return stop_code
-    return _cmd_gateway_start(channels=channels, sender_id=sender_id, chat_id=chat_id)
+    return cli_gateway_surface.cmd_gateway_restart(
+        stop_fn=_cmd_gateway_stop,
+        start_fn=lambda: _cmd_gateway_start(channels=channels, sender_id=sender_id, chat_id=chat_id),
+    )
 
 
 def _required_mcp_servers_from_env() -> list[str]:
@@ -3994,7 +3609,7 @@ async def _required_mcp_preflight(agent_tools: list[object]) -> list[str]:
     required_toolsets = [
         tool
         for tool in agent_tools
-        if isinstance(tool, ManagedMcpToolset) and tool.meta.name in required_set
+        if getattr(getattr(tool, "meta", None), "name", None) in required_set
     ]
     if not required_toolsets:
         return issues
@@ -4140,6 +3755,8 @@ def _cmd_message(message: str, user_id: str, session_id: str) -> int:
         app_name = root_agent.name
         runner, _ = create_runner(agent=root_agent, app_name=app_name)
         prompt = inject_request_time(message, received_at=dt.datetime.now().astimezone())
+        from google.genai import types
+
         request = types.UserContent(parts=[types.Part.from_text(text=prompt)])
 
         final = ""
@@ -4168,20 +3785,11 @@ def _cron_service() -> CronService:
 
 
 def _cron_service_for_agent(agent_name: str) -> tuple[CronService | None, str | None]:
-    """Build one cron service directly from one agent config/workspace."""
-    config_path = _agent_config_path(agent_name)
-    if not config_path.exists():
-        return None, f"agent '{agent_name}' config not found: {config_path}"
-    try:
-        cfg = load_config(config_path=config_path)
-    except Exception as exc:
-        return None, f"agent '{agent_name}' config load failed: {exc}"
-    agent_cfg = cfg.get("agent")
-    workspace_text = ""
-    if isinstance(agent_cfg, dict):
-        workspace_text = str(agent_cfg.get("workspace", "")).strip()
-    workspace = Path(workspace_text).expanduser() if workspace_text else (config_path.parent / "workspace")
-    return CronService(cron_store_path(workspace)), None
+    return cli_runtime_ops.cron_service_for_agent(
+        agent_name=agent_name,
+        agent_config_path=_agent_config_path,
+        load_config_fn=load_config,
+    )
 
 
 def _format_schedule(job) -> str:
@@ -4193,44 +3801,15 @@ def _format_ts(ms: int | None) -> str:
 
 
 def _cmd_cron_list(*, include_disabled: bool, agent: str | None = None) -> int:
-    target_agents, error = _resolve_target_agent_names(agent=agent)
-    if error:
-        _stdout_line(error)
-        return 1
-    if target_agents:
-        results: list[tuple[str, int, str, str]] = []
-        for agent_name in target_agents:
-            service, service_error = _cron_service_for_agent(agent_name)
-            if service_error:
-                results.append((agent_name, 1, "", service_error))
-                continue
-            assert service is not None
-            jobs = service.list_jobs(include_disabled=include_disabled)
-            lines: list[str] = []
-            if not jobs:
-                lines.append("No scheduled jobs.")
-            else:
-                lines.append("Scheduled jobs:")
-                for job in jobs:
-                    status = "enabled" if job.enabled else "disabled"
-                    lines.append(
-                        f"- {job.name} (id: {job.id}, {_format_schedule(job)}, {status}, next={_format_ts(job.state.next_run_at_ms)})"
-                    )
-            results.append((agent_name, 0, "\n".join(lines), ""))
-        return _print_agent_output_sections(results)
-
-    service = _cron_service()
-    jobs = service.list_jobs(include_disabled=include_disabled)
-    if not jobs:
-        _stdout_line("No scheduled jobs.")
-        return 0
-    _stdout_line("Scheduled jobs:")
-    for job in jobs:
-        status = "enabled" if job.enabled else "disabled"
-        _stdout_line(
-            f"- {job.name} (id: {job.id}, {_format_schedule(job)}, {status}, next={_format_ts(job.state.next_run_at_ms)})"
-        )
-    return 0
+    return cli_runtime_ops.cmd_cron_list(
+        include_disabled=include_disabled,
+        agent=agent,
+        stdout_line=_stdout_line,
+        resolve_target_agent_names=lambda value: _resolve_target_agent_names(agent=value),
+        print_agent_output_sections=_print_agent_output_sections,
+        cron_service_local=_cron_service,
+        cron_service_for_agent_fn=_cron_service_for_agent,
+    )
 
 
 def _cmd_cron_add(
@@ -4245,258 +3824,101 @@ def _cmd_cron_add(
     to: str | None,
     channel: str | None,
 ) -> int:
-    if tz and not cron_expr:
-        _stdout_line("Error: --tz can only be used with --cron")
-        return 1
-    if deliver and not to:
-        _stdout_line("Error: --to is required when --deliver is set")
-        return 1
-
-    parsed, parse_error = parse_schedule_input(
-        every_seconds=every,
-        cron_expr=cron_expr,
-        at=at,
-        tz=tz,
-    )
-    if parse_error:
-        _stdout_line(f"Error: {parse_error}")
-        return 1
-    if parsed is None:  # pragma: no cover - defensive fallback
-        _stdout_line("Error: failed to parse schedule")
-        return 1
-    schedule = parsed.schedule
-    delete_after_run = parsed.delete_after_run
-
-    target_channel = channel or "local"
-    target_to = to or "default"
-    job = _cron_service().add_job(
+    return cli_runtime_ops.cmd_cron_add(
         name=name,
-        schedule=schedule,
         message=message,
+        every=every,
+        cron_expr=cron_expr,
+        tz=tz,
+        at=at,
         deliver=deliver,
-        channel=target_channel,
-        to=target_to,
-        delete_after_run=delete_after_run,
+        to=to,
+        channel=channel,
+        stdout_line=_stdout_line,
+        cron_service_local=_cron_service,
     )
-    _stdout_line(f"Added job '{job.name}' ({job.id})")
-    return 0
 
 
 def _cmd_cron_remove(job_id: str) -> int:
-    if _cron_service().remove_job(job_id):
-        _stdout_line(f"Removed job {job_id}")
-        return 0
-    _stdout_line(f"Job {job_id} not found")
-    return 1
+    return cli_runtime_ops.cmd_cron_remove(
+        job_id=job_id,
+        stdout_line=_stdout_line,
+        cron_service_local=_cron_service,
+    )
 
 
 def _cmd_cron_enable(job_id: str, *, disable: bool) -> int:
-    job = _cron_service().enable_job(job_id, enabled=not disable)
-    if job is None:
-        _stdout_line(f"Job {job_id} not found")
-        return 1
-    state = "disabled" if disable else "enabled"
-    _stdout_line(f"Job '{job.name}' {state}")
-    return 0
+    return cli_runtime_ops.cmd_cron_enable(
+        job_id=job_id,
+        disable=disable,
+        stdout_line=_stdout_line,
+        cron_service_local=_cron_service,
+    )
 
 
 def _cmd_cron_run(job_id: str, *, force: bool) -> int:
-    async def _run():
+    async def _run_job() -> Any:
         return await _cron_service().run_job_with_result(job_id, force=force)
 
-    result = asyncio.run(_run())
-    if result.reason == "ok":
-        _stdout_line("Job executed")
-        return 0
-    if result.reason == "disabled":
-        _stdout_line(f"Job {job_id} is disabled. Use --force to run it once.")
-        return 1
-    if result.reason == "not_found":
-        _stdout_line(f"Job {job_id} not found")
-        return 1
-    if result.reason == "no_callback":
-        _stdout_line(
-            "Job skipped: no executor callback is configured in this process. "
-            "Run via gateway runtime to execute the agent task."
-        )
-        return 1
-    if result.reason == "error":
-        if result.error:
-            _stdout_line(f"Job execution failed: {result.error}")
-        else:
-            _stdout_line(f"Job execution failed: {job_id}")
-        return 1
-    _stdout_line(f"Job skipped: {result.reason}")
-    return 1
+    result = asyncio.run(_run_job())
+    return cli_runtime_ops.cmd_cron_run(
+        job_id=job_id,
+        force=force,
+        stdout_line=_stdout_line,
+        run_job_with_result=lambda _job_id, _force: result,
+    )
 
 
 def _cmd_cron_status(*, agent: str | None = None) -> int:
-    target_agents, error = _resolve_target_agent_names(agent=agent)
-    if error:
-        _stdout_line(error)
-        return 1
-    if target_agents:
-        results: list[tuple[str, int, str, str]] = []
-        for agent_name in target_agents:
-            service, service_error = _cron_service_for_agent(agent_name)
-            if service_error:
-                results.append((agent_name, 1, "", service_error))
-                continue
-            assert service is not None
-            info = service.status()
-            runtime_pid = info.get("runtime_pid")
-            runtime_pid_text = str(runtime_pid) if runtime_pid is not None else "-"
-            line = (
-                "Cron status: "
-                f"local_running={info['running']}, "
-                f"runtime_active={info.get('runtime_active', False)}, "
-                f"runtime_pid={runtime_pid_text}, "
-                f"jobs={info['jobs']}, "
-                f"next_wake_at={_format_ts(info['next_wake_at_ms'])}"
-            )
-            results.append((agent_name, 0, line, ""))
-        return _print_agent_output_sections(results)
-
-    info = _cron_service().status()
-    runtime_pid = info.get("runtime_pid")
-    runtime_pid_text = str(runtime_pid) if runtime_pid is not None else "-"
-    _stdout_line(
-        "Cron status: "
-        f"local_running={info['running']}, "
-        f"runtime_active={info.get('runtime_active', False)}, "
-        f"runtime_pid={runtime_pid_text}, "
-        f"jobs={info['jobs']}, "
-        f"next_wake_at={_format_ts(info['next_wake_at_ms'])}"
+    return cli_runtime_ops.cmd_cron_status(
+        agent=agent,
+        stdout_line=_stdout_line,
+        resolve_target_agent_names=lambda value: _resolve_target_agent_names(agent=value),
+        print_agent_output_sections=_print_agent_output_sections,
+        cron_service_local=_cron_service,
+        cron_service_for_agent_fn=_cron_service_for_agent,
     )
-    return 0
 
 
 def _dispatch_cron_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    """Dispatch cron subcommands from parsed argparse namespace."""
-    raw_agent = getattr(args, "agent", None)
-    selected_agent = str(raw_agent).strip() if raw_agent is not None else ""
-    selected_agent = selected_agent or None
-    enabled_agents = _global_enabled_agent_names()
-    if args.cron_command in {"add", "remove", "enable", "run"} and not selected_agent and enabled_agents:
-        _stdout_line(
-            f"Error: `openheron cron {args.cron_command}` requires --agent in multi-agent mode."
-        )
-        return 1
-    if selected_agent and enabled_agents and args.cron_command in {"add", "remove", "enable", "run"}:
-        proxy_args: list[str] = ["cron", args.cron_command]
-        if args.cron_command == "add":
-            proxy_args.extend(["--name", args.name, "--message", args.message])
-            if args.every is not None:
-                proxy_args.extend(["--every", str(args.every)])
-            if args.cron_expr is not None:
-                proxy_args.extend(["--cron", args.cron_expr])
-            if args.tz is not None:
-                proxy_args.extend(["--tz", args.tz])
-            if args.at is not None:
-                proxy_args.extend(["--at", args.at])
-            if args.deliver:
-                proxy_args.append("--deliver")
-            if args.to is not None:
-                proxy_args.extend(["--to", args.to])
-            if args.channel is not None:
-                proxy_args.extend(["--channel", args.channel])
-        elif args.cron_command == "remove":
-            proxy_args.append(args.job_id)
-        elif args.cron_command == "enable":
-            proxy_args.append(args.job_id)
-            if args.disable:
-                proxy_args.append("--disable")
-        elif args.cron_command == "run":
-            proxy_args.append(args.job_id)
-            if args.force:
-                proxy_args.append("--force")
-        code, out, err = _run_agent_cli_command(agent_name=selected_agent, args=proxy_args)
-        if out.strip():
-            _stdout_line(out.strip())
-        if err.strip():
-            _stdout_line(err.strip())
-        return 0 if code == 0 else 1
-
-    cron_handlers: dict[str, Callable[[], int]] = {
-        "list": lambda: _cmd_cron_list(include_disabled=args.all, agent=selected_agent),
-        "add": lambda: _cmd_cron_add(
-            name=args.name,
-            message=args.message,
-            every=args.every,
-            cron_expr=args.cron_expr,
-            tz=args.tz,
-            at=args.at,
-            deliver=args.deliver,
-            to=args.to,
-            channel=args.channel,
+    return cli_runtime_ops.dispatch_cron_command(
+        args=args,
+        parser=parser,
+        stdout_line=_stdout_line,
+        global_enabled_agent_names=_global_enabled_agent_names,
+        run_agent_cli_command=lambda name, argv: _run_agent_cli_command(agent_name=name, args=argv),
+        cmd_cron_list_fn=lambda include_disabled, selected_agent: _cmd_cron_list(
+            include_disabled=include_disabled,
+            agent=selected_agent,
         ),
-        "remove": lambda: _cmd_cron_remove(args.job_id),
-        "enable": lambda: _cmd_cron_enable(args.job_id, disable=args.disable),
-        "run": lambda: _cmd_cron_run(args.job_id, force=args.force),
-        "status": lambda: _cmd_cron_status(agent=selected_agent),
-    }
-    handler = cron_handlers.get(args.cron_command)
-    if handler is None:
-        parser.print_help()
-        return 2
-    return handler()
+        cmd_cron_add_fn=lambda name, message, every, cron_expr, tz, at, deliver, to, channel: _cmd_cron_add(
+            name=name,
+            message=message,
+            every=every,
+            cron_expr=cron_expr,
+            tz=tz,
+            at=at,
+            deliver=deliver,
+            to=to,
+            channel=channel,
+        ),
+        cmd_cron_remove_fn=lambda job_id: _cmd_cron_remove(job_id),
+        cmd_cron_enable_fn=lambda job_id, disable: _cmd_cron_enable(job_id, disable=disable),
+        cmd_cron_run_fn=lambda job_id, force: _cmd_cron_run(job_id, force=force),
+        cmd_cron_status_fn=lambda selected_agent: _cmd_cron_status(agent=selected_agent),
+    )
 
 
 def _cmd_heartbeat_status(*, output_json: bool, agent: str | None = None) -> int:
-    target_agents, error = _resolve_target_agent_names(agent=agent)
-    if error:
-        _stdout_line(error)
-        return 1
-    if target_agents:
-        if output_json:
-            merged: dict[str, Any] = {}
-            failures: list[str] = []
-            for agent_name in target_agents:
-                code, out, err = _run_agent_cli_command(
-                    agent_name=agent_name,
-                    args=["heartbeat", "status", "--json"],
-                )
-                if code != 0:
-                    failures.append(f"{agent_name}: {err.strip() or out.strip() or f'exit_code={code}'}")
-                    continue
-                try:
-                    merged[agent_name] = json.loads(out or "{}")
-                except Exception:
-                    failures.append(f"{agent_name}: invalid JSON output")
-            _stdout_line(json.dumps(merged, ensure_ascii=False))
-            if failures:
-                _stdout_line(f"[warn] heartbeat status failed for agents: {'; '.join(failures)}")
-                return 1
-            return 0
-        results: list[tuple[str, int, str, str]] = []
-        for agent_name in target_agents:
-            code, out, err = _run_agent_cli_command(agent_name=agent_name, args=["heartbeat", "status"])
-            results.append((agent_name, code, out, err))
-        return _print_agent_output_sections(results)
-
-    workspace = load_security_policy().workspace_root
-    snapshot = read_heartbeat_status_snapshot(workspace)
-    if output_json:
-        _stdout_line(json.dumps(snapshot or {}, ensure_ascii=False))
-        return 0
-    if not snapshot:
-        _stdout_line("Heartbeat status: no runtime snapshot yet.")
-        return 0
-    delivery = snapshot.get("last_delivery")
-    delivery_kind = delivery.get("kind") if isinstance(delivery, dict) else "-"
-    _stdout_line(
-        "Heartbeat status: "
-        f"running={snapshot.get('running', False)}, "
-        f"enabled={snapshot.get('enabled', False)}, "
-        f"last_status={snapshot.get('last_status', '-')}, "
-        f"last_reason={snapshot.get('last_reason', '-')}, "
-        f"target_mode={snapshot.get('target_mode', '-')}, "
-        f"last_delivery_kind={delivery_kind}"
+    return cli_runtime_ops.cmd_heartbeat_status(
+        output_json=output_json,
+        agent=agent,
+        stdout_line=_stdout_line,
+        resolve_target_agent_names=lambda value: _resolve_target_agent_names(agent=value),
+        run_agent_cli_command=lambda name, argv: _run_agent_cli_command(agent_name=name, args=argv),
+        print_agent_output_sections=_print_agent_output_sections,
+        workspace_root=lambda: load_security_policy().workspace_root,
     )
-    _stdout_line(
-        f"Heartbeat recent reasons: {json.dumps(snapshot.get('recent_reason_counts', {}), ensure_ascii=False)}"
-    )
-    return 0
 
 
 def _cmd_token_stats(
@@ -4508,96 +3930,32 @@ def _cmd_token_stats(
     until: str | None,
     last_hours: int | None,
 ) -> int:
-    """Show aggregated LLM token usage and recent request records."""
-    since_ms: int | None = None
-    until_ms: int | None = None
-    if last_hours is not None:
-        now_ms = int(time.time() * 1000)
-        since_ms = now_ms - (max(1, int(last_hours)) * 3600 * 1000)
-        until_ms = now_ms
-    else:
-        try:
-            since_ms = parse_time_filter_to_epoch_ms(since)
-            until_ms = parse_time_filter_to_epoch_ms(until)
-        except ValueError as exc:
-            _stdout_line(f"Error: invalid --since/--until value ({exc})")
-            return 1
-    if since_ms is not None and until_ms is not None and since_ms > until_ms:
-        _stdout_line("Error: --since must be earlier than or equal to --until")
-        return 1
-
-    stats = read_token_usage_stats(
+    return cli_runtime_ops.cmd_token_stats(
+        output_json=output_json,
         limit=limit,
-        provider=provider or None,
-        since_ms=since_ms,
-        until_ms=until_ms,
+        provider=provider,
+        since=since,
+        until=until,
+        last_hours=last_hours,
+        stdout_line=_stdout_line,
+        read_token_usage_stats_fn=read_token_usage_stats,
+        token_usage_db_path_fn=token_usage_db_path,
     )
-    payload: dict[str, Any] = {
-        "dbPath": str(token_usage_db_path()),
-        "provider": provider or "",
-        "since": since or "",
-        "until": until or "",
-        "lastHours": int(last_hours) if last_hours is not None else None,
-        **stats,
-    }
-    if output_json:
-        _stdout_line(json.dumps(payload, ensure_ascii=False))
-        return 0
-
-    _stdout_line(
-        "Token stats: "
-        f"requests={stats['requests']}, "
-        f"request_tokens={stats['request_tokens']}, "
-        f"response_tokens={stats['response_tokens']}, "
-        f"total_tokens={stats['total_tokens']}"
-    )
-    if last_hours is not None:
-        _stdout_line(f"Time range: last_hours={int(last_hours)}")
-    elif since or until:
-        _stdout_line(f"Time range: since={since or '-'}, until={until or '-'}")
-    _stdout_line(
-        "Token by modality: "
-        f"request(text={stats['request_text_tokens']}, image={stats['request_image_tokens']}), "
-        f"response(text={stats['response_text_tokens']}, image={stats['response_image_tokens']})"
-    )
-    _stdout_line(f"Token DB: {payload['dbPath']}")
-    if not stats["recent"]:
-        _stdout_line("Recent: no records")
-        return 0
-    _stdout_line("Recent records:")
-    for row in stats["recent"]:
-        _stdout_line(
-            "- "
-            f"{row.get('response_at', '-')}"
-            f" provider={row.get('provider', '-')}"
-            f" model={row.get('model', '-')}"
-            f" session={row.get('session_id', '-')}"
-            f" req={row.get('request_tokens', 0)}"
-            f" resp={row.get('response_tokens', 0)}"
-            f" total={row.get('total_tokens', 0)}"
-            f" req_img={row.get('request_image_tokens', 0)}"
-            f" resp_img={row.get('response_image_tokens', 0)}"
-        )
-    return 0
 
 
 def _dispatch_token_command(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    """Dispatch token subcommands from parsed argparse namespace."""
-    token_handlers: dict[str, Callable[[], int]] = {
-        "stats": lambda: _cmd_token_stats(
-            output_json=args.output_json,
-            limit=args.limit,
-            provider=args.provider,
-            since=args.since,
-            until=args.until,
-            last_hours=args.last_hours,
+    return cli_runtime_ops.dispatch_token_command(
+        args=args,
+        parser=parser,
+        cmd_token_stats_fn=lambda output_json, limit, provider, since, until, last_hours: _cmd_token_stats(
+            output_json=output_json,
+            limit=limit,
+            provider=provider,
+            since=since,
+            until=until,
+            last_hours=last_hours,
         ),
-    }
-    handler = token_handlers.get(args.token_command)
-    if handler is None:
-        parser.print_help()
-        return 2
-    return handler()
+    )
 
 
 def _gateway_service_manifest_path(manager: str, service_name: str) -> Path:
