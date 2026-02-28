@@ -18,7 +18,7 @@ from ..runtime.adk_utils import extract_text, merge_text_stream
 from ..runtime.cron_helpers import cron_store_path
 from ..runtime.cron_service import CronJob, CronService
 from ..runtime.heartbeat_status_store import write_heartbeat_status_snapshot
-from ..runtime.heartbeat_utils import HEARTBEAT_TOKEN, strip_heartbeat_token
+from ..runtime.heartbeat_utils import DEFAULT_HEARTBEAT_PROMPT, HEARTBEAT_TOKEN, strip_heartbeat_token
 from ..runtime.heartbeat_runner import HeartbeatRunRequest, HeartbeatRunner
 from ..runtime.message_time import append_execution_time, inject_request_time
 from ..runtime.runner_factory import create_runner
@@ -213,9 +213,44 @@ class Gateway:
         except Exception:
             logger.exception("Failed persisting heartbeat status snapshot")
 
+    @staticmethod
+    def _heartbeat_task_file_candidates(workspace: Path) -> tuple[Path, ...]:
+        """Return heartbeat task file candidate paths in priority order."""
+        return (workspace / "HEARTBEAT.md", workspace / "heartbeat.md")
+
+    def _heartbeat_task_gate(self, prompt: str) -> tuple[bool, str]:
+        """Return whether heartbeat should invoke LLM under current workspace task state.
+
+        Only the default heartbeat prompt is gated by task-file presence/content.
+        Custom prompts are treated as explicit operator intent and run normally.
+        """
+        if (prompt or "").strip() != DEFAULT_HEARTBEAT_PROMPT:
+            return True, ""
+        workspace = load_security_policy().workspace_root
+        candidate_paths = self._heartbeat_task_file_candidates(workspace)
+        task_path = next((path for path in candidate_paths if path.exists()), None)
+        if task_path is None:
+            return False, "task-missing"
+        try:
+            content = task_path.read_text(encoding="utf-8")
+        except Exception:
+            # Keep heartbeat runnable when task file cannot be read.
+            return True, ""
+        if not content.strip():
+            return False, "task-empty"
+        return True, ""
+
     async def _run_heartbeat(self, req: HeartbeatRunRequest) -> None:
         """Execute one heartbeat turn through the shared ADK runner."""
         try:
+            should_invoke, skip_kind = self._heartbeat_task_gate(req.prompt)
+            if not should_invoke:
+                self._last_heartbeat_delivery = {
+                    "reason": req.reason,
+                    "kind": skip_kind,
+                    "delivered": False,
+                }
+                return
             prompt = append_execution_time(req.prompt)
             request = types.UserContent(parts=[types.Part.from_text(text=prompt)])
             final = await self._run_text_stream(

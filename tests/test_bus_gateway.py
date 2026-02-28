@@ -20,6 +20,7 @@ from openheron.app.gateway import Gateway
 from openheron.runtime.cron_service import CronJob, CronJobState, CronPayload, CronSchedule
 from openheron.runtime.heartbeat_runner import HeartbeatRunRequest
 from openheron.runtime.heartbeat_status_store import read_heartbeat_status_snapshot
+from openheron.runtime.heartbeat_utils import DEFAULT_HEARTBEAT_PROMPT
 from openheron.tooling.registry import SubagentSpawnRequest
 
 
@@ -272,6 +273,58 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
         request = captured["new_message"]
         self.assertIn("ops check", request.parts[0].text)
         self.assertIn("Current time:", request.parts[0].text)
+
+    async def test_run_heartbeat_skips_when_default_prompt_and_task_file_missing(self) -> None:
+        called = False
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                nonlocal called
+                called = True
+                if False:
+                    yield  # pragma: no cover
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=MessageBus())
+
+        req = HeartbeatRunRequest(reason="interval", prompt=DEFAULT_HEARTBEAT_PROMPT)
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = pytypes.SimpleNamespace(workspace_root=Path(tmp))
+            with patch("openheron.app.gateway.load_security_policy", return_value=policy):
+                await gateway._run_heartbeat(req)
+
+        self.assertFalse(called)
+        status = gateway.heartbeat_status()
+        self.assertEqual(status["last_delivery"]["kind"], "task-missing")
+        self.assertFalse(bool(status["last_delivery"]["delivered"]))
+
+    async def test_run_heartbeat_skips_when_default_prompt_and_task_file_empty(self) -> None:
+        called = False
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                nonlocal called
+                called = True
+                if False:
+                    yield  # pragma: no cover
+
+        fake_agent = pytypes.SimpleNamespace(name="openheron")
+        with patch("openheron.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openheron", bus=MessageBus())
+
+        req = HeartbeatRunRequest(reason="interval", prompt=DEFAULT_HEARTBEAT_PROMPT)
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "HEARTBEAT.md").write_text("\n  \n", encoding="utf-8")
+            policy = pytypes.SimpleNamespace(workspace_root=workspace)
+            with patch("openheron.app.gateway.load_security_policy", return_value=policy):
+                await gateway._run_heartbeat(req)
+
+        self.assertFalse(called)
+        status = gateway.heartbeat_status()
+        self.assertEqual(status["last_delivery"]["kind"], "task-empty")
+        self.assertFalse(bool(status["last_delivery"]["delivered"]))
 
     async def test_run_heartbeat_skips_ok_delivery_when_show_ok_disabled(self) -> None:
         fake_event = pytypes.SimpleNamespace(
