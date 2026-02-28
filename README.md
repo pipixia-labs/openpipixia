@@ -105,18 +105,19 @@ openheron gateway-service status
 
 ## GUI Automation
 
-`openheron` includes two desktop GUI tools:
+`openheron` includes desktop GUI tools.
 
-- `computer_use(action=...)`: single-step GUI action
-- `computer_task(task=..., max_steps=...)`: planner-driven multi-step GUI execution
-
-Recommended environment:
+Recommended environment variables:
 
 ```bash
 export OPENHERON_GUI_MODEL=gpt-4.1-mini
 export OPENHERON_GUI_PLANNER_MODEL=gpt-4.1-mini
 export OPENAI_API_KEY=your_api_key
 ```
+
+- `OPENHERON_GUI_MODEL`: model used for low-level GUI grounding/actions
+- `OPENHERON_GUI_PLANNER_MODEL`: model used for multi-step planning
+- `OPENAI_API_KEY`: API key for the selected OpenAI-compatible provider
 
 GUI smoke examples:
 
