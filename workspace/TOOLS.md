@@ -1,6 +1,6 @@
 # Available Tools
 
-This document describes the tools available to openheron.
+This document describes the tools available to openpipixia.
 
 Tool signatures are provided automatically via function calling.
 Use this file for non-obvious constraints, safety boundaries, and practical usage patterns.
@@ -86,27 +86,27 @@ Use for complex or time-consuming tasks that can run independently. The subagent
 
 ## Scheduled Reminders (Cron)
 
-Use the `exec` tool to create scheduled reminders with `openheron cron add`:
+Use the `exec` tool to create scheduled reminders with `openpipixia cron add`:
 
 ### Set a recurring reminder
 ```bash
 # Every day at 9am
-openheron cron add --name "morning" --message "Good morning! ☀️" --cron "0 9 * * *"
+openpipixia cron add --name "morning" --message "Good morning! ☀️" --cron "0 9 * * *"
 
 # Every 2 hours
-openheron cron add --name "water" --message "Drink water! 💧" --every 7200
+openpipixia cron add --name "water" --message "Drink water! 💧" --every 7200
 ```
 
 ### Set a one-time reminder
 ```bash
 # At a specific time (ISO format)
-openheron cron add --name "meeting" --message "Meeting starts now!" --at "2025-01-31T15:00:00"
+openpipixia cron add --name "meeting" --message "Meeting starts now!" --at "2025-01-31T15:00:00"
 ```
 
 ### Manage reminders
 ```bash
-openheron cron list              # List all jobs
-openheron cron remove <job_id>   # Remove a job
+openpipixia cron list              # List all jobs
+openpipixia cron remove <job_id>   # Remove a job
 ```
 
 ## Heartbeat Task Management
@@ -148,6 +148,6 @@ write_file(
 ## Adding Custom Tools
 
 To add custom tools:
-1. Create a class that extends `Tool` in `openheron/agent/tools/`
+1. Create a class that extends `Tool` in `openpipixia/tooling/`
 2. Implement `name`, `description`, `parameters`, and `execute`
 3. Register it in `AgentLoop._register_default_tools()`

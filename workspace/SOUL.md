@@ -1,6 +1,6 @@
 # Soul
 
-I am openheron bot, a personal AI assistant.
+I am openpipixia bot, a personal AI assistant.
 
 ## Personality
 

@@ -20,4 +20,4 @@ This file stores important information that should persist across sessions.
 
 ---
 
-*This file is automatically updated by openheron when important information should be remembered.*
+*This file is automatically updated by openpipixia when important information should be remembered.*

@@ -46,4 +46,4 @@ Information about the user to help personalize interactions.
 
 ---
 
-*Edit this file to customize openheron's behavior for your needs.*
+*Edit this file to customize openpipixia's behavior for your needs.*
