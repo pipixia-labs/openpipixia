@@ -1,5 +1,5 @@
 [project]
-name = "openheron"
+name = "openpipixia"
 version = "0.1.0"
 description = "A lightweight skills-first agent built with Google ADK"
 requires-python = ">=3.11"

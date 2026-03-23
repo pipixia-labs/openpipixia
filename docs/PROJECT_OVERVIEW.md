@@ -1,8 +1,8 @@
-# openheron 项目说明
+# openpipixia 项目说明
 
 ## 1. 项目定位
 
-`openheron` 是一个基于 Google ADK 的轻量级 Agent 系统，目标是用尽量小的实现覆盖完整的 Agent 运行链路：
+`openpipixia` 是一个基于 Google ADK 的轻量级 Agent 系统，目标是用尽量小的实现覆盖完整的 Agent 运行链路：
 
 - 多渠道消息接入（local/feishu/telegram/whatsapp/discord/dingtalk/email/slack/qq）
 - Skills 驱动的能力扩展（`SKILL.md`）

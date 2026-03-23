@@ -1,6 +1,6 @@
 ## Channels
 
-Connect OpenHeron to your preferred chat platforms.
+Connect OpenPipixia to your preferred chat platforms.
 
 ### Telegram
 

@@ -1,6 +1,6 @@
 <div align="center">
- <img src="assets/openheron_logo_2.png" alt="openheron" width="500">
-  <h1>OpenHeron: A Lightweight Personal AI Assistant 🚀</h1>
+ <img src="assets/openheron_logo_2.png" alt="openpipixia" width="500">
+  <h1>OpenPipixia: A Lightweight Personal AI Assistant 🚀</h1>
 </div>
 
 ## ✨ News
@@ -19,8 +19,8 @@
 
 ### 🛠️ 1. Set Up the Environment and Initialize
 ```bash
-git clone https://github.com/openheron/openheron
-cd openheron
+git clone https://github.com/pipixia-labs/openpipixia
+cd openpipixia
 python3.14 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt 

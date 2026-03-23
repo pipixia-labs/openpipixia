@@ -1,4 +1,4 @@
-# openheron 配置说明
+# openpipixia 配置说明
 
 ## 配置来源与优先级
 
