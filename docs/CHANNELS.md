@@ -271,3 +271,86 @@ Give openpipixia its own email account. It polls **IMAP** for incoming mail and 
   }
 }
 ```
+
+---
+
+### Weixin (微信 / Personal WeChat)
+
+Uses the Weixin HTTP long-poll API and QR-code login flow.
+
+**1. Log in**
+
+```bash
+ppx channels login weixin
+```
+
+This prints a QR code or login URL in the terminal. After you confirm the login on your phone, the token is saved locally for later gateway runs.
+
+**2. Configure**
+
+```json
+{
+  "channels": {
+    "weixin": {
+      "enabled": true,
+      "baseUrl": "https://ilinkai.weixin.qq.com",
+      "token": "",
+      "stateDir": "",
+      "pollTimeoutSeconds": 35,
+      "allowFrom": []
+    }
+  }
+}
+```
+
+> - `allowFrom`: Leave empty to allow all contacts, or add specific sender IDs from the logs.
+> - `token`: Optional. Usually you should leave this empty and use `ppx channels login weixin`.
+> - `stateDir`: Optional. Leave empty to use the default runtime state directory.
+
+**3. Run**
+
+```bash
+ppx gateway run --channels weixin
+```
+
+---
+
+### WeCom (企业微信)
+
+Uses the WeCom AI bot WebSocket long connection. No public IP is required.
+
+**1. Install optional dependency**
+
+```bash
+pip install -e .[wecom]
+```
+
+**2. Create a WeCom AI bot**
+- Open the WeCom admin / AI bot console
+- Create a bot with **API mode** and **long connection**
+- Copy the **Bot ID** and **Secret**
+
+**3. Configure**
+
+```json
+{
+  "channels": {
+    "wecom": {
+      "enabled": true,
+      "botId": "your_bot_id",
+      "secret": "your_bot_secret",
+      "allowFrom": [],
+      "welcomeMessage": ""
+    }
+  }
+}
+```
+
+> - `allowFrom`: Leave empty to allow all users, or restrict to specific WeCom user IDs.
+> - `welcomeMessage`: Optional. When set, the bot sends this message when a user enters the chat.
+
+**4. Run**
+
+```bash
+ppx gateway run --channels wecom
+```

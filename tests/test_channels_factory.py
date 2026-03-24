@@ -55,6 +55,12 @@ class ChannelFactoryTests(unittest.TestCase):
         self.assertTrue(any("QQ_SECRET" in item for item in issues))
         self.assertFalse(any("Unsupported channels" in item for item in issues))
 
+    def test_validate_reports_wecom_setup_issues(self) -> None:
+        issues = validate_channel_setup(["wecom"])
+        self.assertTrue(any("WECOM_BOT_ID" in item for item in issues))
+        self.assertTrue(any("WECOM_SECRET" in item for item in issues))
+        self.assertFalse(any("Unsupported channels" in item for item in issues))
+
     def test_validate_reports_discord_setup_issues(self) -> None:
         issues = validate_channel_setup(["discord"])
         self.assertTrue(any("DISCORD_BOT_TOKEN" in item for item in issues))
@@ -101,6 +107,16 @@ class ChannelFactoryTests(unittest.TestCase):
         os.environ["QQ_SECRET"] = "app-secret"
         manager, _ = build_channel_manager(bus=MessageBus(), channel_names=["qq"])
         self.assertIn("qq", manager.channels)
+
+    def test_build_manager_registers_weixin_when_configured(self) -> None:
+        manager, _ = build_channel_manager(bus=MessageBus(), channel_names=["weixin"])
+        self.assertIn("weixin", manager.channels)
+
+    def test_build_manager_registers_wecom_when_configured(self) -> None:
+        os.environ["WECOM_BOT_ID"] = "bot-id"
+        os.environ["WECOM_SECRET"] = "bot-secret"
+        manager, _ = build_channel_manager(bus=MessageBus(), channel_names=["wecom"])
+        self.assertIn("wecom", manager.channels)
 
     def test_build_manager_registers_discord_when_configured(self) -> None:
         os.environ["DISCORD_BOT_TOKEN"] = "discord-token"

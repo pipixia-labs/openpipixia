@@ -16,6 +16,11 @@ dependencies = [
     "oauth-cli-kit>=0.1.1",
 ]
 
+[project.optional-dependencies]
+wecom = [
+    "wecom-aibot-sdk-python>=0.1.5",
+]
+
 [project.scripts]
 ppx = "openpipixia.app.cli:main"
 openpipixia-gui-mcp = "openpipixia.gui.mcp_server:main"

@@ -22,6 +22,7 @@ LEGACY_CHANNEL_FIELD_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("email", "smtp_username", "smtpUsername"),
     ("email", "smtp_password", "smtpPassword"),
     ("qq", "app_id", "appId"),
+    ("wecom", "bot_id", "botId"),
 )
 
 CHANNEL_ENV_BACKFILL_MAPPINGS: tuple[tuple[str, str, str], ...] = (
@@ -38,6 +39,9 @@ CHANNEL_ENV_BACKFILL_MAPPINGS: tuple[tuple[str, str, str], ...] = (
     ("email", "smtpPassword", "EMAIL_SMTP_PASSWORD"),
     ("qq", "appId", "QQ_APP_ID"),
     ("qq", "secret", "QQ_SECRET"),
+    ("weixin", "token", "WEIXIN_TOKEN"),
+    ("wecom", "botId", "WECOM_BOT_ID"),
+    ("wecom", "secret", "WECOM_SECRET"),
 )
 
 

@@ -1721,11 +1721,46 @@ def _whatsapp_bridge_token_from_config(config: dict[str, Any]) -> str:
     return str(whatsapp.get("bridgeToken", "")).strip()
 
 
+def _weixin_channel_from_config(config: dict[str, Any]):
+    """Build a Weixin channel instance from config for interactive login."""
+    from ..bus.queue import MessageBus
+    from ..channels.weixin import WeixinChannel
+
+    channels = config.get("channels", {})
+    if not isinstance(channels, dict):
+        channels = {}
+    section = channels.get("weixin", {})
+    if not isinstance(section, dict):
+        section = {}
+    return WeixinChannel(
+        bus=MessageBus(),
+        allow_from=[str(item).strip() for item in section.get("allowFrom", []) if str(item).strip()],
+        base_url=str(section.get("baseUrl", "https://ilinkai.weixin.qq.com")).strip() or "https://ilinkai.weixin.qq.com",
+        token=str(section.get("token", "")).strip(),
+        state_dir=str(section.get("stateDir", "")).strip(),
+        poll_timeout_seconds=int(section.get("pollTimeoutSeconds", 35) or 35),
+    )
+
+
 def _cmd_channels_login(*, channel_name: str) -> int:
-    """Start channel login helper (currently WhatsApp QR bridge only)."""
+    """Start channel-specific interactive login helpers."""
     target = channel_name.strip().lower()
+    if target == "weixin":
+        try:
+            channel = _weixin_channel_from_config(load_config())
+            ok = asyncio.run(channel.login())
+        except KeyboardInterrupt:
+            return 0
+        except Exception as exc:
+            _stdout_line(f"Weixin login failed: {exc}")
+            return 1
+        if ok:
+            _stdout_line("Weixin login completed. Token was saved for later gateway runs.")
+            return 0
+        _stdout_line("Weixin login failed.")
+        return 1
     if target != "whatsapp":
-        _stdout_line(f"Unsupported channel for login: {channel_name}. Supported: whatsapp")
+        _stdout_line(f"Unsupported channel for login: {channel_name}. Supported: whatsapp, weixin")
         return 1
 
     try:
@@ -2787,6 +2822,8 @@ def _multi_agent_channel_conflict_warnings(config_paths_by_agent: dict[str, Path
         "email",
         "slack",
         "qq",
+        "weixin",
+        "wecom",
     }
     signature_keys: dict[str, tuple[str, ...]] = {
         "feishu": ("appId", "verificationToken"),
@@ -2796,6 +2833,8 @@ def _multi_agent_channel_conflict_warnings(config_paths_by_agent: dict[str, Path
         "dingtalk": ("clientId",),
         "slack": ("botToken", "appToken"),
         "qq": ("appId",),
+        "weixin": ("baseUrl", "token", "stateDir"),
+        "wecom": ("botId",),
     }
     signature_to_agents: dict[tuple[str, str, str], list[str]] = {}
 
@@ -3715,7 +3754,7 @@ def main(argv: list[str] | None = None) -> None:
         "channel_name",
         nargs="?",
         default="whatsapp",
-        help="Channel name (default: whatsapp).",
+        help="Channel name (default: whatsapp). Supported: whatsapp, weixin.",
     )
     channels_bridge_parser = channels_subparsers.add_parser(
         "bridge",

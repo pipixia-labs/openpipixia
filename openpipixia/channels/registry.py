@@ -22,6 +22,8 @@ from .local import LocalChannel
 from .qq import QQ_AVAILABLE, QQChannel
 from .slack import SlackChannel
 from .telegram import TelegramChannel
+from .wecom import WECOM_AVAILABLE, WecomChannel
+from .weixin import WeixinChannel
 from .whatsapp import WHATSAPP_AVAILABLE, WhatsAppChannel
 
 
@@ -240,6 +242,41 @@ def _validate_qq() -> list[str]:
     return issues
 
 
+def _build_weixin(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
+    allow_from = _env_csv("WEIXIN_ALLOW_FROM")
+    return WeixinChannel(
+        bus=bus,
+        allow_from=allow_from,
+        base_url=os.getenv("WEIXIN_BASE_URL", "https://ilinkai.weixin.qq.com").strip(),
+        token=os.getenv("WEIXIN_TOKEN", "").strip(),
+        state_dir=os.getenv("WEIXIN_STATE_DIR", "").strip(),
+        poll_timeout_seconds=_env_int("WEIXIN_POLL_TIMEOUT_SECONDS", 35),
+    )
+
+
+def _validate_weixin() -> list[str]:
+    return []
+
+
+def _build_wecom(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
+    allow_from = _env_csv("WECOM_ALLOW_FROM")
+    return WecomChannel(
+        bus=bus,
+        bot_id=os.getenv("WECOM_BOT_ID", "").strip(),
+        secret=os.getenv("WECOM_SECRET", "").strip(),
+        allow_from=allow_from,
+        welcome_message=os.getenv("WECOM_WELCOME_MESSAGE", ""),
+    )
+
+
+def _validate_wecom() -> list[str]:
+    issues: list[str] = []
+    if not WECOM_AVAILABLE:
+        issues.append("WeCom channel requires `wecom-aibot-sdk-python` (pip install openpipixia[wecom]).")
+    issues.extend(_required_env_issues("wecom", "WECOM_BOT_ID", "WECOM_SECRET"))
+    return issues
+
+
 def _build_not_implemented(_bus: MessageBus, _local_writer: LocalWriter) -> None:
     # Channel is known by configuration but has no runtime adapter yet.
     return None
@@ -262,6 +299,8 @@ CHANNEL_ORDER: tuple[str, ...] = (
     "email",
     "slack",
     "qq",
+    "weixin",
+    "wecom",
 )
 
 
@@ -275,6 +314,8 @@ _IMPLEMENTED_CHANNEL_SPECS: tuple[ChannelSpec, ...] = (
     ChannelSpec(name="email", build=_build_email, validate_setup=_validate_email),
     ChannelSpec(name="slack", build=_build_slack, validate_setup=_validate_slack),
     ChannelSpec(name="qq", build=_build_qq, validate_setup=_validate_qq),
+    ChannelSpec(name="weixin", build=_build_weixin, validate_setup=_validate_weixin),
+    ChannelSpec(name="wecom", build=_build_wecom, validate_setup=_validate_wecom),
 )
 
 

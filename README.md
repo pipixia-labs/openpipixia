@@ -54,7 +54,7 @@ Review and edit your configuration files:
   `~/.openpipixia/agent_name_1/config.json`
 
 Fill in required provider keys and assign per-agent security settings.
-You can leave channel-specific keys (for example Telegram or Feishu) empty at this stage.
+You can leave channel-specific keys (for example Telegram, Feishu, Weixin, or WeCom) empty at this stage.
 
 ### 💬 3. Try Local Interactive Mode
 
@@ -98,6 +98,19 @@ ppx gateway run --channels local,feishu --interactive-local
 ppx gateway status
 ppx gateway-service install --channels local,feishu --enable
 ppx gateway-service status
+```
+
+Weixin login helper:
+
+```bash
+ppx channels login weixin
+ppx gateway run --channels local,weixin --interactive-local
+```
+
+WeCom optional dependency:
+
+```bash
+pip install -e .[wecom]
 ```
 
 ## 🖥️ Computer Use

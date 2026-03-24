@@ -34,6 +34,8 @@ _CONFIG_CHANNEL_ORDER: tuple[str, ...] = (
     "email",
     "slack",
     "qq",
+    "weixin",
+    "wecom",
 )
 
 # (channel_name, config_key, env_key)
@@ -59,6 +61,12 @@ _CHANNEL_STRIPPED_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("slack", "defaultChannel", "SLACK_DEFAULT_CHANNEL"),
     ("qq", "appId", "QQ_APP_ID"),
     ("qq", "secret", "QQ_SECRET"),
+    ("weixin", "baseUrl", "WEIXIN_BASE_URL"),
+    ("weixin", "token", "WEIXIN_TOKEN"),
+    ("weixin", "stateDir", "WEIXIN_STATE_DIR"),
+    ("wecom", "botId", "WECOM_BOT_ID"),
+    ("wecom", "secret", "WECOM_SECRET"),
+    ("wecom", "welcomeMessage", "WECOM_WELCOME_MESSAGE"),
 )
 
 # (channel_name, config_key, env_key) values are stringified without trim.
@@ -79,6 +87,8 @@ _CHANNEL_ALLOWLIST_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("slack", "allowFrom", "SLACK_ALLOW_FROM"),
     ("slack", "pollChannels", "SLACK_POLL_CHANNELS"),
     ("qq", "allowFrom", "QQ_ALLOW_FROM"),
+    ("weixin", "allowFrom", "WEIXIN_ALLOW_FROM"),
+    ("wecom", "allowFrom", "WECOM_ALLOW_FROM"),
 )
 
 # (channel_name, config_key, env_key, default)
@@ -104,6 +114,7 @@ _CHANNEL_DEFAULT_VALUE_FIELDS: tuple[tuple[str, str, str, Any], ...] = (
     ("email", "pollIntervalSeconds", "EMAIL_POLL_INTERVAL_SECONDS", 30),
     ("email", "maxBodyChars", "EMAIL_MAX_BODY_CHARS", 12000),
     ("slack", "pollIntervalSeconds", "SLACK_POLL_INTERVAL_SECONDS", 15),
+    ("weixin", "pollTimeoutSeconds", "WEIXIN_POLL_TIMEOUT_SECONDS", 35),
 )
 
 _EXTENSIBLE_MAP_KEYS: frozenset[str] = frozenset({"env"})
@@ -341,6 +352,21 @@ def default_config() -> dict[str, Any]:
                 "appId": "",
                 "secret": "",
                 "allowFrom": [],
+            },
+            "weixin": {
+                "enabled": False,
+                "baseUrl": "https://ilinkai.weixin.qq.com",
+                "token": "",
+                "stateDir": "",
+                "pollTimeoutSeconds": 35,
+                "allowFrom": [],
+            },
+            "wecom": {
+                "enabled": False,
+                "botId": "",
+                "secret": "",
+                "allowFrom": [],
+                "welcomeMessage": "",
             },
         },
         "web": {

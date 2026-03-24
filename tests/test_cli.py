@@ -14,6 +14,7 @@ import sys
 import builtins
 import datetime as dt
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 _ORIGINAL_STDOUT: io.TextIOBase | None = None
@@ -2730,6 +2731,19 @@ class CLITests(unittest.TestCase):
         self.assertEqual(call_args.kwargs["cwd"], Path("/tmp/openpipixia-bridge"))
         self.assertTrue(call_args.kwargs["check"])
         self.assertEqual(call_args.kwargs["env"]["BRIDGE_TOKEN"], "bridge-token-1")
+
+    def test_cmd_channels_login_runs_weixin_login(self) -> None:
+        from openpipixia import cli
+
+        fake_channel = SimpleNamespace(login=AsyncMock(return_value=True))
+        with patch.object(cli, "_weixin_channel_from_config", return_value=fake_channel):
+            with patch.object(cli, "load_config", return_value={"channels": {"weixin": {}}}):
+                with patch("builtins.print") as mocked_print:
+                    code = cli._cmd_channels_login(channel_name="weixin")
+
+        self.assertEqual(code, 0)
+        fake_channel.login.assert_awaited_once_with()
+        self.assertIn("Weixin login completed", mocked_print.call_args[0][0])
 
     def test_cmd_channels_bridge_start_persists_runtime_state(self) -> None:
         from openpipixia import cli
