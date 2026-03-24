@@ -732,6 +732,21 @@ def exec_command(
             return _ret("tool.exec.output", "Error: no compatible shell found for command execution")
         command_argv = shell_argv
 
+    _emit_feedback(
+        f"Starting command: {cmd[:200]}",
+        feedback_type="tool",
+        status="started",
+        tool_name="exec",
+        step_title="Starting command",
+        done=False,
+        important=True,
+        extra_metadata={
+            "command": cmd,
+            "background": bool(background),
+            "pty": bool(pty),
+        },
+    )
+
     if not background and yield_ms is None and not pty:
         try:
             completed = subprocess.run(
@@ -748,6 +763,19 @@ def exec_command(
             return _ret("tool.exec.output", f"Error executing command: {exc}")
 
         result = _format_exec_output(completed.stdout, completed.stderr, completed.returncode)
+        _emit_feedback(
+            "Command finished.",
+            feedback_type="status",
+            status="finished" if completed.returncode == 0 else "failed",
+            tool_name="exec",
+            step_title="Command finished",
+            done=True,
+            important=completed.returncode != 0,
+            extra_metadata={
+                "command": cmd,
+                "exit_code": completed.returncode,
+            },
+        )
         _request_heartbeat_wake("exec:foreground")
         _debug("tool.exec.output", {"chars": len(result), "preview": result[:240]})
         return result
@@ -769,6 +797,21 @@ def exec_command(
     yield_window = 0 if background else max(10, min(120_000, int(yield_ms or 10_000)))
     if yield_window == 0:
         manager.mark_backgrounded(session.session_id, scope_key=effective_scope)
+        _emit_feedback(
+            f"Command running in background (session {session.session_id}).",
+            feedback_type="status",
+            status="running",
+            tool_name="exec",
+            session_id=session.session_id,
+            step_title="Background command started",
+            done=False,
+            important=True,
+            extra_metadata={
+                "command": cmd,
+                "pid": session.process.pid,
+                "scope": effective_scope,
+            },
+        )
         _request_heartbeat_wake("exec:background")
         warning_text = "\n".join(warnings)
         result = (
@@ -788,12 +831,41 @@ def exec_command(
             str(polled.get("stderr", "")),
             polled.get("exit_code") if isinstance(polled.get("exit_code"), int) else None,
         )
+        _emit_feedback(
+            "Command finished during initial wait window.",
+            feedback_type="status",
+            status="finished" if int(polled.get("exit_code") or 0) == 0 else "failed",
+            tool_name="exec",
+            session_id=session.session_id,
+            step_title="Command finished",
+            done=True,
+            important=int(polled.get("exit_code") or 0) != 0,
+            extra_metadata={
+                "command": cmd,
+                "exit_code": polled.get("exit_code"),
+            },
+        )
         manager.remove_session(session.session_id)
         _request_heartbeat_wake("exec:foreground")
         _debug("tool.exec.output", {"chars": len(result), "preview": result[:240]})
         return result
 
     manager.mark_backgrounded(session.session_id, scope_key=effective_scope)
+    _emit_feedback(
+        f"Command still running (session {session.session_id}).",
+        feedback_type="status",
+        status="running",
+        tool_name="exec",
+        session_id=session.session_id,
+        step_title="Command still running",
+        done=False,
+        important=True,
+        extra_metadata={
+            "command": cmd,
+            "pid": session.process.pid,
+            "scope": effective_scope,
+        },
+    )
     _request_heartbeat_wake("exec:background")
     warning_text = "\n".join(warnings)
     running = (
@@ -878,6 +950,12 @@ def process_session(
         )
         if not output:
             output = "(no new output)"
+        poll_meta = {
+            "status": status,
+            "retry_in_ms": retry_in_ms if isinstance(retry_in_ms, int) else None,
+            "exit_code": payload.get("exit_code"),
+            "exit_signal": payload.get("exit_signal"),
+        }
         if payload.get("exited"):
             exit_signal = payload.get("exit_signal")
             if status == "killed":
@@ -886,16 +964,44 @@ def process_session(
                 trailer = f"Process exited with signal {exit_signal}."
             else:
                 trailer = f"Process exited with code {payload.get('exit_code', 0)}."
+            _emit_feedback(
+                trailer,
+                feedback_type="status",
+                status="finished" if status == "exited" and int(payload.get("exit_code") or 0) == 0 else status,
+                tool_name="process",
+                session_id=sid,
+                step_title="Process finished",
+                done=True,
+                important=status != "exited" or int(payload.get("exit_code") or 0) != 0,
+                extra_metadata=poll_meta,
+            )
         else:
             trailer = "Process still running."
             if isinstance(retry_in_ms, int):
                 trailer += f" Suggested next poll in ~{retry_in_ms}ms."
-        poll_meta = {
-            "status": status,
-            "retry_in_ms": retry_in_ms if isinstance(retry_in_ms, int) else None,
-            "exit_code": payload.get("exit_code"),
-            "exit_signal": payload.get("exit_signal"),
-        }
+            _emit_feedback(
+                trailer,
+                feedback_type="status",
+                status="running",
+                tool_name="process",
+                session_id=sid,
+                step_title="Process still running",
+                done=False,
+                important=False,
+                extra_metadata=poll_meta,
+            )
+        if str(payload.get("stdout", "")).strip() or str(payload.get("stderr", "")).strip():
+            _emit_feedback(
+                output,
+                feedback_type="tool_output",
+                status=status,
+                tool_name="process",
+                session_id=sid,
+                step_title="Process output",
+                done=bool(payload.get("exited")),
+                important=False,
+                extra_metadata=poll_meta,
+            )
         meta_prefix = f"[poll-meta]{json.dumps(poll_meta, ensure_ascii=False, separators=(',', ':'))}"
         return _ret("tool.process.output", f"{meta_prefix}\n\n{output}\n\n{trailer}")
 
@@ -935,6 +1041,16 @@ def process_session(
         err = manager.write_session(sid, data, eof=eof, scope_key=effective_scope)
         if err:
             return _ret("tool.process.output", f"Error: {err}")
+        _emit_feedback(
+            f"Wrote input to process session {sid}.",
+            feedback_type="tool",
+            status="running",
+            tool_name="process",
+            session_id=sid,
+            step_title="Process input written",
+            done=False,
+            important=False,
+        )
         _request_heartbeat_wake("exec:write")
         suffix = " (stdin closed)" if eof else ""
         return _ret("tool.process.output", f"Wrote {len(data)} bytes to session {sid}{suffix}.")
@@ -949,6 +1065,16 @@ def process_session(
         err = manager.write_session(sid, payload, eof=eof, scope_key=effective_scope)
         if err:
             return _ret("tool.process.output", f"Error: {err}")
+        _emit_feedback(
+            f"Sent keys to process session {sid}.",
+            feedback_type="tool",
+            status="running",
+            tool_name="process",
+            session_id=sid,
+            step_title="Process keys sent",
+            done=False,
+            important=False,
+        )
         _request_heartbeat_wake("exec:send-keys")
         warning_text = f"\nWarnings:\n- " + "\n- ".join(warnings) if warnings else ""
         suffix = " (stdin closed)" if eof else ""
@@ -961,6 +1087,16 @@ def process_session(
         err = manager.write_session(sid, "\r", eof=False, scope_key=effective_scope)
         if err:
             return _ret("tool.process.output", f"Error: {err}")
+        _emit_feedback(
+            f"Submitted process session {sid}.",
+            feedback_type="tool",
+            status="running",
+            tool_name="process",
+            session_id=sid,
+            step_title="Process submitted",
+            done=False,
+            important=False,
+        )
         _request_heartbeat_wake("exec:submit")
         return _ret("tool.process.output", f"Submitted session {sid} (sent CR).")
 
@@ -969,6 +1105,16 @@ def process_session(
         err = manager.write_session(sid, payload, eof=False, scope_key=effective_scope)
         if err:
             return _ret("tool.process.output", f"Error: {err}")
+        _emit_feedback(
+            f"Pasted input to process session {sid}.",
+            feedback_type="tool",
+            status="running",
+            tool_name="process",
+            session_id=sid,
+            step_title="Process paste",
+            done=False,
+            important=False,
+        )
         _request_heartbeat_wake("exec:paste")
         mode = "bracketed" if bracketed else "plain"
         return _ret("tool.process.output", f"Pasted {len(data)} chars to session {sid} ({mode}).")
@@ -977,6 +1123,16 @@ def process_session(
         err = manager.kill_session(sid, scope_key=effective_scope)
         if err:
             return _ret("tool.process.output", f"Error: {err}")
+        _emit_feedback(
+            f"Termination requested for process session {sid}.",
+            feedback_type="status",
+            status="killed",
+            tool_name="process",
+            session_id=sid,
+            step_title="Process termination requested",
+            done=False,
+            important=True,
+        )
         _request_heartbeat_wake("exec:kill")
         return _ret("tool.process.output", f"Termination requested for session {sid}.")
 
@@ -1980,6 +2136,43 @@ def _resolve_route(channel: str | None, chat_id: str | None) -> tuple[str, str]:
     return final_channel, final_chat_id
 
 
+def _feedback_metadata(
+    feedback_type: str,
+    *,
+    status: str | None = None,
+    tool_name: str | None = None,
+    task_id: str | None = None,
+    session_id: str | None = None,
+    step_title: str | None = None,
+    done: bool | None = None,
+    important: bool | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build normalized metadata for one user-visible feedback event."""
+
+    metadata: dict[str, Any] = {
+        "_feedback_type": feedback_type,
+        "_feedback_origin": "tool",
+    }
+    if status:
+        metadata["_feedback_status"] = status
+    if tool_name:
+        metadata["_tool_name"] = tool_name
+    if task_id:
+        metadata["_task_id"] = task_id
+    if session_id:
+        metadata["_session_id"] = session_id
+    if step_title:
+        metadata["_step_title"] = step_title
+    if done is not None:
+        metadata["_done"] = bool(done)
+    if important is not None:
+        metadata["_important"] = bool(important)
+    if extra:
+        metadata.update(extra)
+    return metadata
+
+
 def _publish_outbound_if_configured(msg: OutboundMessage) -> bool:
     if _OUTBOUND_PUBLISHER is None:
         return False
@@ -1992,6 +2185,66 @@ def _publish_outbound_if_configured(msg: OutboundMessage) -> bool:
     # Fire-and-forget is sufficient here: channel delivery is handled by gateway.
     loop.create_task(_OUTBOUND_PUBLISHER(msg))
     return True
+
+
+def _record_outbound_message(msg: OutboundMessage) -> Path:
+    """Persist one outbound message to local outbox storage."""
+
+    record: dict[str, Any] = {
+        "channel": msg.channel,
+        "chat_id": msg.chat_id,
+        "content": msg.content,
+    }
+    if msg.reply_to is not None:
+        record["reply_to"] = msg.reply_to
+    if msg.metadata:
+        record["metadata"] = msg.metadata
+    return _append_outbox_record(record)
+
+
+def _queue_or_record_outbound(msg: OutboundMessage) -> tuple[bool, Path | None]:
+    """Send one outbound message through gateway when possible, else record it locally."""
+
+    if _publish_outbound_if_configured(msg):
+        return True, None
+    return False, _record_outbound_message(msg)
+
+
+def _emit_feedback(
+    content: str,
+    *,
+    feedback_type: str,
+    status: str | None = None,
+    tool_name: str | None = None,
+    channel: str | None = None,
+    chat_id: str | None = None,
+    task_id: str | None = None,
+    session_id: str | None = None,
+    step_title: str | None = None,
+    done: bool | None = None,
+    important: bool | None = None,
+    extra_metadata: dict[str, Any] | None = None,
+) -> tuple[bool, Path | None]:
+    """Publish or persist one typed feedback event for APP/chat consumers."""
+
+    target_channel, target_chat_id = _resolve_route(channel, chat_id)
+    outbound = OutboundMessage(
+        channel=target_channel,
+        chat_id=target_chat_id,
+        content=content,
+        metadata=_feedback_metadata(
+            feedback_type,
+            status=status,
+            tool_name=tool_name,
+            task_id=task_id,
+            session_id=session_id,
+            step_title=step_title,
+            done=done,
+            important=important,
+            extra=extra_metadata,
+        ),
+    )
+    return _queue_or_record_outbound(outbound)
 
 
 def _append_outbox_record(record: dict[str, Any]) -> Path:
@@ -2051,18 +2304,13 @@ def message(content: str, channel: str | None = None, chat_id: str | None = None
     _debug("tool.message.input", {"channel": target_channel, "chat_id": target_chat_id, "chars": len(content)})
 
     outbound = OutboundMessage(channel=target_channel, chat_id=target_chat_id, content=content)
-    if _publish_outbound_if_configured(outbound):
+    queued, outbox = _queue_or_record_outbound(outbound)
+    if queued:
         result = f"Message queued to {target_channel}:{target_chat_id}"
         _debug("tool.message.output", result)
         return result
 
-    outbox = _append_outbox_record(
-        {
-            "channel": target_channel,
-            "chat_id": target_chat_id,
-            "content": content,
-        }
-    )
+    assert outbox is not None
     result = f"Message recorded to {outbox}"
     _debug("tool.message.output", result)
     return result
@@ -2173,6 +2421,22 @@ def spawn_subagent(
     except Exception as exc:
         _debug("tool.spawn_subagent.record_error", {"task_id": task_id, "error": str(exc)})
 
+    _emit_feedback(
+        "Background sub-agent task accepted.",
+        feedback_type="status",
+        status="accepted",
+        tool_name="spawn_subagent",
+        channel=target_channel,
+        chat_id=target_chat_id,
+        task_id=task_id,
+        step_title="Sub-agent accepted",
+        done=False,
+        important=True,
+        extra_metadata={
+            "notify_on_complete": bool(notify_on_complete),
+        },
+    )
+
     result = {
         "status": "pending",
         "task_id": task_id,
@@ -2230,19 +2494,13 @@ def message_image(path: str, caption: str = "", channel: str | None = None, chat
             "image_path": str(image_path),
         },
     )
-    if _publish_outbound_if_configured(outbound):
+    queued, outbox = _queue_or_record_outbound(outbound)
+    if queued:
         result = f"Image queued to {target_channel}:{target_chat_id}"
         _debug("tool.message_image.output", result)
         return result
 
-    outbox = _append_outbox_record(
-        {
-            "channel": target_channel,
-            "chat_id": target_chat_id,
-            "content": caption,
-            "metadata": outbound.metadata,
-        },
-    )
+    assert outbox is not None
     result = f"Image message recorded to {outbox}"
     _debug("tool.message_image.output", result)
     return result
@@ -2288,19 +2546,13 @@ def message_file(path: str, caption: str = "", channel: str | None = None, chat_
             "file_name": file_path.name,
         },
     )
-    if _publish_outbound_if_configured(outbound):
+    queued, outbox = _queue_or_record_outbound(outbound)
+    if queued:
         result = f"File queued to {target_channel}:{target_chat_id}"
         _debug("tool.message_file.output", result)
         return result
 
-    outbox = _append_outbox_record(
-        {
-            "channel": target_channel,
-            "chat_id": target_chat_id,
-            "content": caption,
-            "metadata": outbound.metadata,
-        },
-    )
+    assert outbox is not None
     result = f"File message recorded to {outbox}"
     _debug("tool.message_file.output", result)
     return result

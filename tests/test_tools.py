@@ -191,6 +191,29 @@ class ToolsTests(unittest.TestCase):
         removed = process_session("remove", session_id=session_id)
         self.assertIn("Removed session", removed)
 
+    def test_exec_background_records_feedback_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["OPENPIPIXIA_WORKSPACE"] = tmp
+            out = exec_command('python -c "import time; time.sleep(0.2)"', background=True)
+            self.assertIn("session", out.lower())
+
+            outbox = Path(tmp) / "messages" / "outbox.log"
+            self.assertTrue(outbox.exists())
+            records = [json.loads(line) for line in outbox.read_text(encoding="utf-8").splitlines()]
+            statuses = {
+                str(record.get("metadata", {}).get("_feedback_status", ""))
+                for record in records
+                if isinstance(record.get("metadata"), dict)
+            }
+            tool_names = {
+                str(record.get("metadata", {}).get("_tool_name", ""))
+                for record in records
+                if isinstance(record.get("metadata"), dict)
+            }
+            self.assertIn("started", statuses)
+            self.assertIn("running", statuses)
+            self.assertIn("exec", tool_names)
+
     def test_exec_background_write_stdin(self) -> None:
         cmd = 'python -c "import sys;print(sys.stdin.readline().strip())"'
         out = exec_command(cmd, background=True)
@@ -210,6 +233,31 @@ class ToolsTests(unittest.TestCase):
         self.assertIn("Process exited with code", last_poll)
         log_text = process_session("log", session_id=session_id)
         self.assertIn("hello", log_text.lower())
+
+    def test_process_poll_records_feedback_output_event(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["OPENPIPIXIA_WORKSPACE"] = tmp
+            cmd = (
+                'python -c "import sys,time;print(\'hello\');sys.stdout.flush();'
+                'time.sleep(0.3)"'
+            )
+            out = exec_command(cmd, background=True)
+            matched = re.search(r"session ([0-9a-f-]+)", out)
+            self.assertIsNotNone(matched)
+            session_id = matched.group(1) if matched else ""
+
+            poll = process_session("poll", session_id=session_id, timeout_ms=400)
+            self.assertIn("[poll-meta]", poll)
+
+            outbox = Path(tmp) / "messages" / "outbox.log"
+            records = [json.loads(line) for line in outbox.read_text(encoding="utf-8").splitlines()]
+            output_events = [
+                record for record in records
+                if str(record.get("metadata", {}).get("_feedback_type", "")) == "tool_output"
+            ]
+            self.assertTrue(output_events)
+            self.assertEqual(output_events[-1]["metadata"]["_tool_name"], "process")
+            self.assertEqual(output_events[-1]["metadata"]["_session_id"], session_id)
 
     def test_exec_background_send_keys(self) -> None:
         cmd = 'python -c "import sys;print(sys.stdin.readline().strip())"'
@@ -1684,6 +1732,30 @@ class ToolsTests(unittest.TestCase):
             self.assertEqual(record["chat_id"], "oc_123")
             self.assertEqual(record["user_id"], "u1")
             self.assertEqual(record["session_id"], "s1")
+
+    def test_spawn_subagent_records_feedback_event(self) -> None:
+        captured: list[SubagentSpawnRequest] = []
+        configure_subagent_dispatcher(captured.append)
+        ctx = pytypes.SimpleNamespace(
+            user_id="u1",
+            invocation_id="inv-1",
+            function_call_id="fc-1",
+            session=pytypes.SimpleNamespace(id="s1"),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["OPENPIPIXIA_WORKSPACE"] = tmp
+            with route_context("feishu", "oc_123"):
+                out = spawn_subagent(prompt="summarize logs", tool_context=ctx)
+
+            self.assertEqual(out.get("status"), "pending")
+            outbox = Path(tmp) / "messages" / "outbox.log"
+            records = [json.loads(line) for line in outbox.read_text(encoding="utf-8").splitlines()]
+            feedback = records[-1]
+            self.assertEqual(feedback["metadata"]["_feedback_type"], "status")
+            self.assertEqual(feedback["metadata"]["_feedback_status"], "accepted")
+            self.assertEqual(feedback["metadata"]["_tool_name"], "spawn_subagent")
+            self.assertTrue(str(feedback["metadata"]["_task_id"]).startswith("subagent-"))
 
 
 if __name__ == "__main__":

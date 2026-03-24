@@ -630,6 +630,15 @@ class Gateway:
                 channel=request.channel,
                 chat_id=request.chat_id,
                 content=content,
+                metadata={
+                    "_feedback_type": "status",
+                    "_feedback_origin": "runtime",
+                    "_feedback_status": str(response_payload.get("status", "completed")),
+                    "_tool_name": "spawn_subagent",
+                    "_task_id": request.task_id,
+                    "_done": True,
+                    "_important": response_payload.get("status") != "completed",
+                },
             )
         )
 
