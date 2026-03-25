@@ -108,7 +108,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
     ),
     ProviderSpec(
         name="zhipu",
-        default_model="glm-4-plus",
+        default_model="zai/glm-4.7",
         display_name="Zhipu",
         runtime=RUNTIME_LITELLM,
         api_key_env="ZAI_API_KEY",
@@ -127,13 +127,13 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
     ),
     ProviderSpec(
         name="minimax",
-        default_model="MiniMax-M2.1",
+        default_model="minimax/MiniMax-M2.7",
         display_name="MiniMax",
         runtime=RUNTIME_LITELLM,
         api_key_env="MINIMAX_API_KEY",
         litellm_prefix="minimax",
         skip_prefixes=("minimax/",),
-        default_api_base="https://api.minimax.io/v1",
+        default_api_base="https://api.minimaxi.com/v1",
     ),
     ProviderSpec(
         name="aihubmix",
