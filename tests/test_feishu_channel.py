@@ -172,6 +172,40 @@ class FeishuChannelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(inbound.metadata.get("file_key"), "file_v2_123")
         self.assertEqual(inbound.metadata.get("local_path"), str(saved))
 
+    async def test_on_message_downloads_audio_and_forwards_workspace_path(self) -> None:
+        bus = MessageBus()
+        channel = FeishuChannel(bus=bus, app_id="app-id", app_secret="app-secret")
+        data = pytypes.SimpleNamespace(
+            event=pytypes.SimpleNamespace(
+                message=pytypes.SimpleNamespace(
+                    message_id="om_audio_1",
+                    chat_id="oc_group_3",
+                    chat_type="group",
+                    message_type="audio",
+                    content='{"file_key":"file_v2_audio_123","file_name":"voice-message.opus"}',
+                ),
+                sender=pytypes.SimpleNamespace(
+                    sender_type="user",
+                    sender_id=pytypes.SimpleNamespace(open_id="ou_user_2"),
+                ),
+            )
+        )
+        saved = Path("/tmp/inbox/feishu/voice-message.opus")
+
+        with (
+            patch.object(channel, "_add_reaction", new=AsyncMock()),
+            patch.object(channel, "_download_audio", return_value=saved) as download_audio,
+        ):
+            await channel._on_message(data)
+
+        download_audio.assert_called_once_with("file_v2_audio_123", "voice-message.opus", "om_audio_1")
+        inbound = await asyncio.wait_for(bus.consume_inbound(), timeout=0.2)
+        self.assertIn(str(saved), inbound.content)
+        self.assertEqual(inbound.metadata.get("msg_type"), "audio")
+        self.assertEqual(inbound.metadata.get("file_key"), "file_v2_audio_123")
+        self.assertEqual(inbound.metadata.get("local_path"), str(saved))
+        self.assertTrue(inbound.metadata.get("audio"))
+
     async def test_on_message_downloads_image_and_forwards_workspace_path(self) -> None:
         bus = MessageBus()
         channel = FeishuChannel(bus=bus, app_id="app-id", app_secret="app-secret")

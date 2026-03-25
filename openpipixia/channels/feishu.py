@@ -736,6 +736,28 @@ class FeishuChannel(BaseChannel):
             message_id,
         )
 
+    def _download_audio_sync(self, file_key: str, file_name: str, message_id: str) -> Path:
+        """Download one Feishu audio resource as a local file."""
+        return self._download_resource_sync(
+            resource_key=file_key,
+            message_id=message_id,
+            resource_type="file",
+            suggested_name=file_name or f"{file_key}.opus",
+            default_suffix=".opus",
+            allow_legacy_file_api=True,
+        )
+
+    async def _download_audio(self, file_key: str, file_name: str, message_id: str) -> Path:
+        """Run audio download in executor and return local path."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            self._download_audio_sync,
+            file_key,
+            file_name,
+            message_id,
+        )
+
     async def _handle_post_message(
         self,
         *,
@@ -834,6 +856,37 @@ class FeishuChannel(BaseChannel):
             name_hint = file_name or file_key
             return f"Received file but download failed: {name_hint}", []
 
+    async def _handle_audio_message(
+        self,
+        *,
+        raw_content: str,
+        message_id: str,
+        metadata: dict[str, Any],
+    ) -> tuple[str, list[str]]:
+        """Handle Feishu `audio`/`voice` payload and return normalized content/media."""
+        payload = self._parse_json_dict(raw_content)
+        file_key = str(payload.get("file_key", "") or payload.get("audio_key", "")).strip()
+        file_name = str(payload.get("file_name", "") or payload.get("name", "")).strip()
+        metadata["file_key"] = file_key
+        metadata["file_name"] = file_name
+        metadata["audio"] = True
+        if not file_key:
+            return "Received an audio message without file_key.", []
+
+        try:
+            local_path = await self._download_audio(file_key, file_name, message_id)
+            metadata["local_path"] = str(local_path)
+            return f"Received audio: {local_path}", [str(local_path)]
+        except Exception as exc:
+            logger.exception(
+                "Failed downloading Feishu audio (message_id=%s file_key=%s)",
+                message_id,
+                file_key,
+            )
+            metadata["download_error"] = str(exc)
+            name_hint = file_name or file_key
+            return f"Received audio but download failed: {name_hint}", []
+
     async def _handle_supported_message(
         self,
         *,
@@ -859,6 +912,12 @@ class FeishuChannel(BaseChannel):
             )
         if msg_type == "file":
             return await self._handle_file_message(
+                raw_content=raw_content,
+                message_id=message_id,
+                metadata=metadata,
+            )
+        if msg_type in {"audio", "voice"}:
+            return await self._handle_audio_message(
                 raw_content=raw_content,
                 message_id=message_id,
                 metadata=metadata,
