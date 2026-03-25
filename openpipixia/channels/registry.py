@@ -248,6 +248,7 @@ def _build_weixin(bus: MessageBus, _local_writer: LocalWriter) -> BaseChannel:
         bus=bus,
         allow_from=allow_from,
         base_url=os.getenv("WEIXIN_BASE_URL", "https://ilinkai.weixin.qq.com").strip(),
+        cdn_base_url=os.getenv("WEIXIN_CDN_BASE_URL", "https://novac2c.cdn.weixin.qq.com/c2c").strip(),
         token=os.getenv("WEIXIN_TOKEN", "").strip(),
         state_dir=os.getenv("WEIXIN_STATE_DIR", "").strip(),
         poll_timeout_seconds=_env_int("WEIXIN_POLL_TIMEOUT_SECONDS", 35),

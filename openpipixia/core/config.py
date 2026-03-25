@@ -62,6 +62,7 @@ _CHANNEL_STRIPPED_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("qq", "appId", "QQ_APP_ID"),
     ("qq", "secret", "QQ_SECRET"),
     ("weixin", "baseUrl", "WEIXIN_BASE_URL"),
+    ("weixin", "cdnBaseUrl", "WEIXIN_CDN_BASE_URL"),
     ("weixin", "token", "WEIXIN_TOKEN"),
     ("weixin", "stateDir", "WEIXIN_STATE_DIR"),
     ("wecom", "botId", "WECOM_BOT_ID"),
@@ -381,6 +382,7 @@ def default_config() -> dict[str, Any]:
             "weixin": {
                 "enabled": False,
                 "baseUrl": "https://ilinkai.weixin.qq.com",
+                "cdnBaseUrl": "https://novac2c.cdn.weixin.qq.com/c2c",
                 "token": "",
                 "stateDir": "",
                 "pollTimeoutSeconds": 35,
