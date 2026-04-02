@@ -88,6 +88,20 @@ def test_project_session_event_builds_structured_parts() -> None:
     assert message["parts"][3]["type"] == "code"
 
 
+def test_project_session_event_skips_unrenderable_events() -> None:
+    message = project_session_event(
+        {
+            "id": "evt_2",
+            "author": "system",
+            "timestamp": 1_717_171_718,
+            "content": {"parts": [{}]},
+        },
+        "session_2",
+    )
+
+    assert message is None
+
+
 def test_create_run_streams_replayable_events(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "global_config.json").write_text(
         json.dumps({"agents": [{"name": "writer", "enabled": True}]}),
@@ -145,3 +159,45 @@ def test_create_run_streams_replayable_events(tmp_path: Path, monkeypatch) -> No
     assert "message.delta" in events
     assert "message.completed" in events
     assert "run.finished" in events
+
+
+def test_create_run_tolerates_null_long_running_tool_ids(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "global_config.json").write_text(
+        json.dumps({"agents": [{"name": "writer", "enabled": True}]}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / "writer"
+    agent_dir.mkdir()
+    (agent_dir / "config.json").write_text(json.dumps({"agent": {"workspace": "workspace/writer"}}), encoding="utf-8")
+
+    stdout_lines = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "event",
+                    "event": {
+                        "long_running_tool_ids": None,
+                        "content": {
+                            "parts": [
+                                {"function_call": {"id": "call_2", "name": "inspect_repo", "args": {"path": "."}}},
+                            ]
+                        },
+                    },
+                }
+            ),
+            json.dumps({"type": "final", "text": "done"}),
+        ]
+    )
+
+    monkeypatch.setattr(
+        "openpipixia.runtime.client_api_service.subprocess.Popen",
+        lambda *args, **kwargs: _FakeProcess(stdout_lines),
+    )
+
+    coordinator = ClientApiCoordinator(data_dir=tmp_path)
+    payload = coordinator.create_run("writer", "session_2", "hi")
+    assert payload["ok"] is True
+
+    handle = coordinator._runs[payload["data"]["run"]["id"]]
+    assert handle.done.wait(timeout=1.0)
+    assert handle.failed is False

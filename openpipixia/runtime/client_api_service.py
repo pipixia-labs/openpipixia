@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.config import get_data_dir
+from ..core.logging_utils import debug_logging_enabled, emit_debug
 
 
 def _iso_now() -> str:
@@ -170,7 +171,15 @@ def _preview_value(value: Any, fallback: str) -> str:
     return dumped[:320] + ("..." if len(dumped) > 320 else "")
 
 
-def project_session_event(event: dict[str, Any], session_id: str) -> dict[str, Any]:
+def _debug(tag: str, payload: Any) -> None:
+    """Emit one structured debug log when client-api debugging is enabled."""
+
+    if not debug_logging_enabled():
+        return
+    emit_debug(tag, payload, depth=3)
+
+
+def project_session_event(event: dict[str, Any], session_id: str) -> dict[str, Any] | None:
     """Project one ADK session event into the client chat message schema."""
 
     author = str(event.get("author") or "").strip().lower()
@@ -228,7 +237,7 @@ def project_session_event(event: dict[str, Any], session_id: str) -> dict[str, A
                 }
             )
     if not parts:
-        parts = [{"type": "markdown", "text": "(event without renderable text)"}]
+        return None
     return {
         "id": str(event.get("id") or f"msg_{session_id}"),
         "session_id": session_id,
@@ -263,6 +272,7 @@ class RunHandle:
         self._subscribers: list[queue.Queue[RunEnvelope | None]] = []
         self._lock = threading.Lock()
         self._seq = 0
+        self._stderr_lines: list[str] = []
         self.done = threading.Event()
         self.failed = False
 
@@ -291,6 +301,20 @@ class RunHandle:
             self._subscribers.clear()
         for subscriber in subscribers:
             subscriber.put(None)
+
+    def append_stderr_line(self, line: str) -> None:
+        """Retain a bounded stderr history for later debug reporting."""
+
+        with self._lock:
+            self._stderr_lines.append(line)
+            if len(self._stderr_lines) > 20:
+                self._stderr_lines = self._stderr_lines[-20:]
+
+    def stderr_text(self) -> str:
+        """Return the retained stderr snapshot."""
+
+        with self._lock:
+            return "\n".join(self._stderr_lines)
 
     def cancel(self) -> bool:
         """Terminate the subprocess if it is still running."""
@@ -474,7 +498,13 @@ class ClientApiCoordinator:
         if session is None:
             return _error("SESSION_NOT_FOUND", f"Session '{session_id}' was not found.")
         events = session.get("events") if isinstance(session.get("events"), list) else []
-        messages = [project_session_event(event, session_id) for event in events if isinstance(event, dict)]
+        messages = [
+            message
+            for event in events
+            if isinstance(event, dict)
+            for message in [project_session_event(event, session_id)]
+            if message is not None
+        ]
         return _ok({"items": messages})
 
     def create_run(self, agent_id: str, session_id: str, text: str, *, user_id: str = "ppx-client-user") -> dict[str, Any]:
@@ -510,6 +540,17 @@ class ClientApiCoordinator:
         with self._lock:
             self._runs[run_id] = handle
         self._session_agents[session_id] = agent_id
+        _debug(
+            "client_api.create_run",
+            {
+                "run_id": run_id,
+                "agent_id": agent_id,
+                "session_id": session_id,
+                "user_id": user_id,
+                "text_preview": text[:240] + ("..." if len(text) > 240 else ""),
+                "worker_cmd": cmd,
+            },
+        )
         handle.publish(
             "run.started",
             {
@@ -540,6 +581,12 @@ class ClientApiCoordinator:
             daemon=True,
         )
         thread.start()
+        stderr_thread = threading.Thread(
+            target=self._consume_run_stderr,
+            args=(handle,),
+            daemon=True,
+        )
+        stderr_thread.start()
         return _ok(
             {
                 "run": {
@@ -551,6 +598,23 @@ class ClientApiCoordinator:
                 }
             }
         )
+
+    def _consume_run_stderr(self, handle: RunHandle) -> None:
+        """Continuously collect worker stderr for debug visibility."""
+
+        assert handle.process.stderr is not None
+        for raw_line in handle.process.stderr:
+            line = raw_line.strip()
+            if not line:
+                continue
+            handle.append_stderr_line(line)
+            _debug(
+                "client_api.worker.stderr",
+                {
+                    "run_id": handle.run_id,
+                    "line_preview": line[:400] + ("..." if len(line) > 400 else ""),
+                },
+            )
 
     def _consume_run_process(self, handle: RunHandle) -> None:
         """Translate worker NDJSON lines into replayable SSE events."""
@@ -564,20 +628,46 @@ class ClientApiCoordinator:
             try:
                 payload = json.loads(line)
             except Exception:
+                _debug(
+                    "client_api.worker.invalid_json",
+                    {
+                        "run_id": handle.run_id,
+                        "line_preview": line[:320],
+                    },
+                )
                 continue
             event_type = str(payload.get("type") or "")
+            _debug(
+                "client_api.worker.payload",
+                {
+                    "run_id": handle.run_id,
+                    "event_type": event_type or "unknown",
+                    "keys": sorted(payload.keys()),
+                },
+            )
             if event_type == "event":
                 event = payload.get("event")
                 if isinstance(event, dict):
                     content = event.get("content") if isinstance(event.get("content"), dict) else {}
                     raw_parts = content.get("parts") if isinstance(content, dict) and isinstance(content.get("parts"), list) else []
-                    long_running_ids = set(str(item) for item in event.get("long_running_tool_ids", []) if item is not None)
+                    raw_long_running_ids = event.get("long_running_tool_ids") or []
+                    long_running_ids = set(str(item) for item in raw_long_running_ids if item is not None)
                     for raw_part in raw_parts:
                         if not isinstance(raw_part, dict):
                             continue
                         function_call = raw_part.get("function_call")
                         if isinstance(function_call, dict):
                             step_id = str(function_call.get("id") or "step")
+                            _debug(
+                                "client_api.step.updated",
+                                {
+                                    "run_id": handle.run_id,
+                                    "step_id": step_id,
+                                    "title": str(function_call.get("name") or "tool"),
+                                    "status": "running",
+                                    "long_running": step_id in long_running_ids,
+                                },
+                            )
                             handle.publish(
                                 "step.updated",
                                 {
@@ -597,6 +687,15 @@ class ClientApiCoordinator:
                             )
                         function_response = raw_part.get("function_response")
                         if isinstance(function_response, dict):
+                            _debug(
+                                "client_api.step.updated",
+                                {
+                                    "run_id": handle.run_id,
+                                    "step_id": str(function_response.get("id") or "step"),
+                                    "title": str(function_response.get("name") or "tool"),
+                                    "status": "completed",
+                                },
+                            )
                             handle.publish(
                                 "step.updated",
                                 {
@@ -612,6 +711,13 @@ class ClientApiCoordinator:
                             )
             elif event_type == "delta":
                 final_text = str(payload.get("text") or final_text)
+                _debug(
+                    "client_api.message.delta",
+                    {
+                        "run_id": handle.run_id,
+                        "text_length": len(final_text),
+                    },
+                )
                 handle.publish(
                     "message.delta",
                     {
@@ -625,6 +731,13 @@ class ClientApiCoordinator:
                 )
             elif event_type == "final":
                 final_text = str(payload.get("text") or final_text)
+                _debug(
+                    "client_api.message.completed",
+                    {
+                        "run_id": handle.run_id,
+                        "text_length": len(final_text),
+                    },
+                )
                 handle.publish(
                     "message.completed",
                     {
@@ -644,6 +757,13 @@ class ClientApiCoordinator:
             elif event_type == "error":
                 handle.failed = True
                 error_message = str(payload.get("message") or "Unknown worker error")
+                _debug(
+                    "client_api.message.failed",
+                    {
+                        "run_id": handle.run_id,
+                        "message": error_message,
+                    },
+                )
                 handle.publish(
                     "message.failed",
                     {
@@ -664,11 +784,18 @@ class ClientApiCoordinator:
                         "message": error_message,
                     },
                 )
-        if handle.process.stderr is not None:
-            stderr_text = handle.process.stderr.read().strip()
-        else:
-            stderr_text = ""
-        if handle.process.wait() != 0 and not handle.failed:
+        exit_code = handle.process.wait()
+        stderr_text = handle.stderr_text()
+        _debug(
+            "client_api.worker.exit",
+            {
+                "run_id": handle.run_id,
+                "exit_code": exit_code,
+                "failed": handle.failed,
+                "stderr_preview": stderr_text[:400] + ("..." if len(stderr_text) > 400 else ""),
+            },
+        )
+        if exit_code != 0 and not handle.failed:
             handle.publish(
                 "error",
                 {
@@ -677,6 +804,15 @@ class ClientApiCoordinator:
                     "message": stderr_text or "worker exited unexpectedly",
                 },
             )
+        _debug(
+            "client_api.run.finished",
+            {
+                "run_id": handle.run_id,
+                "agent_id": handle.agent_id,
+                "session_id": handle.session_id,
+                "status": "failed" if handle.failed else "completed",
+            },
+        )
         handle.publish(
             "run.finished",
             {
@@ -697,6 +833,7 @@ class ClientApiCoordinator:
         cancelled = handle.cancel()
         if not cancelled:
             return _error("RUN_ALREADY_FINISHED", f"Run '{run_id}' has already finished.")
+        _debug("client_api.cancel_run", {"run_id": run_id})
         return _ok({"run": {"id": run_id, "status": "cancelled"}})
 
     def stream_run_events(self, run_id: str, *, last_event_id: str | None = None) -> queue.Queue[RunEnvelope | None] | None:
