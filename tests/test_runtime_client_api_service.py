@@ -4,12 +4,16 @@ import io
 import json
 from pathlib import Path
 
+from google.adk.events.event import Event
+from google.genai import types
+
 from openpipixia.runtime.client_api_service import (
     ClientApiCoordinator,
     build_agent_profile,
     list_enabled_agent_names,
     project_session_event,
 )
+from openpipixia.runtime.session_service import SessionConfig, create_session_service
 
 
 class _FakeProcess:
@@ -201,3 +205,52 @@ def test_create_run_tolerates_null_long_running_tool_ids(tmp_path: Path, monkeyp
     handle = coordinator._runs[payload["data"]["run"]["id"]]
     assert handle.done.wait(timeout=1.0)
     assert handle.failed is False
+
+
+def test_client_api_reads_sessions_directly_without_worker(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "global_config.json").write_text(
+        json.dumps({"agents": [{"name": "writer", "enabled": True}]}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / "writer"
+    agent_dir.mkdir()
+    (agent_dir / "database").mkdir()
+    config_path = agent_dir / "config.json"
+    config_path.write_text(json.dumps({"agent": {"workspace": "workspace/writer"}}), encoding="utf-8")
+
+    async def _seed() -> None:
+        service = create_session_service(
+            SessionConfig(db_url=f"sqlite+aiosqlite:///{agent_dir / 'database' / 'sessions.db'}")
+        )
+        async with service:
+            session = await service.create_session(
+                app_name="openpipixia",
+                user_id="ppx-client-user",
+                session_id="writer-seeded",
+            )
+            await service.append_event(
+                session=session,
+                event=Event(
+                    invocation_id="inv-1",
+                    author="assistant",
+                    content=types.Content(role="model", parts=[types.Part.from_text(text="Hello direct path")]),
+                ),
+            )
+
+    import asyncio
+
+    asyncio.run(_seed())
+
+    monkeypatch.setattr(
+        "openpipixia.runtime.client_api_service._run_worker_command",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("worker path should not be used")),
+    )
+
+    coordinator = ClientApiCoordinator(data_dir=tmp_path)
+    sessions = coordinator.list_sessions("writer")
+    assert sessions["ok"] is True
+    assert sessions["data"]["items"][0]["id"] == "writer-seeded"
+
+    messages = coordinator.get_session_messages("writer-seeded")
+    assert messages["ok"] is True
+    assert messages["data"]["items"][0]["parts"][0]["text"] == "Hello direct path"

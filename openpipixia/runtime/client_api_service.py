@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import asyncio
 import json
 import os
 import queue
@@ -17,6 +18,7 @@ from typing import Any
 
 from ..core.config import get_data_dir
 from ..core.logging_utils import debug_logging_enabled, emit_debug
+from .session_service import SessionConfig, create_session_service
 
 
 def _iso_now() -> str:
@@ -157,6 +159,14 @@ def _run_worker_command(*, config_path: Path, args: list[str]) -> dict[str, Any]
     return json.loads(lines[-1])
 
 
+def _session_db_url_for_config_path(config_path: Path) -> str:
+    """Build the per-agent SQLite session DB URL without mutating process env."""
+
+    db_path = config_path.parent / "database" / "sessions.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return f"sqlite+aiosqlite:///{db_path}"
+
+
 def _preview_value(value: Any, fallback: str) -> str:
     if isinstance(value, str):
         stripped = value.strip()
@@ -169,6 +179,21 @@ def _preview_value(value: Any, fallback: str) -> str:
     if not dumped or dumped == "{}":
         return fallback
     return dumped[:320] + ("..." if len(dumped) > 320 else "")
+
+
+def _event_preview_text(event: dict[str, Any]) -> str:
+    """Build a lightweight session preview string from one serialized event."""
+
+    content = event.get("content") if isinstance(event.get("content"), dict) else {}
+    raw_parts = content.get("parts") if isinstance(content.get("parts"), list) else []
+    texts: list[str] = []
+    for raw_part in raw_parts:
+        if not isinstance(raw_part, dict):
+            continue
+        text = raw_part.get("text")
+        if isinstance(text, str) and text.strip():
+            texts.append(text.strip())
+    return " ".join(texts).strip()
 
 
 def _debug(tag: str, payload: Any) -> None:
@@ -361,6 +386,67 @@ class ClientApiCoordinator:
         self._runs: dict[str, RunHandle] = {}
         self._lock = threading.Lock()
 
+    def _read_sessions_direct(self, config_path: Path, *, user_id: str) -> list[dict[str, Any]]:
+        """Read session summaries directly from the per-agent SQLite store."""
+
+        async def _load() -> list[dict[str, Any]]:
+            service = create_session_service(SessionConfig(db_url=_session_db_url_for_config_path(config_path)))
+            async with service:
+                response = await service.list_sessions(app_name="openpipixia", user_id=user_id)
+            return [
+                {
+                    "id": session.id,
+                    "last_update_time": session.last_update_time,
+                    "last_preview": (
+                        _event_preview_text(session.events[-1].model_dump(mode="json"))
+                        if session.events
+                        else ""
+                    ),
+                }
+                for session in response.sessions
+            ]
+
+        return asyncio.run(_load())
+
+    def _create_session_direct(self, config_path: Path, *, user_id: str, session_id: str) -> dict[str, Any]:
+        """Create one session directly in the per-agent SQLite store."""
+
+        async def _create() -> dict[str, Any]:
+            service = create_session_service(SessionConfig(db_url=_session_db_url_for_config_path(config_path)))
+            async with service:
+                session = await service.create_session(
+                    app_name="openpipixia",
+                    user_id=user_id,
+                    session_id=session_id,
+                )
+            return {
+                "id": session.id,
+                "last_update_time": session.last_update_time,
+            }
+
+        return asyncio.run(_create())
+
+    def _get_session_direct(self, config_path: Path, *, user_id: str, session_id: str) -> dict[str, Any] | None:
+        """Read one session with events directly from the per-agent SQLite store."""
+
+        async def _load() -> dict[str, Any] | None:
+            service = create_session_service(SessionConfig(db_url=_session_db_url_for_config_path(config_path)))
+            async with service:
+                session = await service.get_session(
+                    app_name="openpipixia",
+                    user_id=user_id,
+                    session_id=session_id,
+                )
+            if session is None:
+                return None
+            return {
+                "id": session.id,
+                "last_update_time": session.last_update_time,
+                "events": [event.model_dump(mode="json") for event in session.events],
+            }
+
+        return asyncio.run(_load())
+
     def health(self) -> dict[str, Any]:
         """Return a lightweight health payload."""
 
@@ -396,23 +482,32 @@ class ClientApiCoordinator:
         agents = [build_agent_profile(name, self.data_dir) for name in list_enabled_agent_names(self.data_dir)]
         return _ok({"items": agents})
 
-    def list_sessions(self, agent_id: str) -> dict[str, Any]:
+    def list_sessions(self, agent_id: str, *, user_id: str = "ppx-client-user") -> dict[str, Any]:
         """Return projected session summaries for one agent."""
 
         config_path = agent_config_path(agent_id, self.data_dir)
         if not config_path.exists():
             return _error("AGENT_NOT_FOUND", f"Agent '{agent_id}' was not found.")
         try:
-            response = _run_worker_command(
-                config_path=config_path,
-                args=["list_sessions", "--config-path", str(config_path)],
-            )
+            sessions = self._read_sessions_direct(config_path, user_id=user_id)
         except Exception as exc:
-            return _error("RUNTIME_UNAVAILABLE", str(exc))
+            _debug(
+                "client_api.list_sessions.direct_failed",
+                {
+                    "agent_id": agent_id,
+                    "error": str(exc),
+                },
+            )
+            try:
+                response = _run_worker_command(
+                    config_path=config_path,
+                    args=["list_sessions", "--config-path", str(config_path)],
+                )
+                sessions = [item for item in response.get("sessions", []) if isinstance(item, dict)]
+            except Exception as fallback_exc:
+                return _error("RUNTIME_UNAVAILABLE", str(fallback_exc))
         items = []
-        for session in response.get("sessions", []):
-            if not isinstance(session, dict):
-                continue
+        for session in sessions:
             session_id = str(session.get("id") or "")
             if not session_id:
                 continue
@@ -435,7 +530,7 @@ class ClientApiCoordinator:
         items.sort(key=lambda item: item["updated_at"], reverse=True)
         return _ok({"items": items})
 
-    def create_session(self, agent_id: str) -> dict[str, Any]:
+    def create_session(self, agent_id: str, *, user_id: str = "ppx-client-user") -> dict[str, Any]:
         """Create one session for the target agent."""
 
         config_path = agent_config_path(agent_id, self.data_dir)
@@ -443,13 +538,32 @@ class ClientApiCoordinator:
             return _error("AGENT_NOT_FOUND", f"Agent '{agent_id}' was not found.")
         session_id = f"{agent_id}-{os.urandom(8).hex()}"
         try:
-            response = _run_worker_command(
-                config_path=config_path,
-                args=["create_session", "--config-path", str(config_path), "--session-id", session_id],
-            )
+            session = self._create_session_direct(config_path, user_id=user_id, session_id=session_id)
         except Exception as exc:
-            return _error("RUNTIME_UNAVAILABLE", str(exc))
-        session = response.get("session") if isinstance(response.get("session"), dict) else {}
+            _debug(
+                "client_api.create_session.direct_failed",
+                {
+                    "agent_id": agent_id,
+                    "session_id": session_id,
+                    "error": str(exc),
+                },
+            )
+            try:
+                response = _run_worker_command(
+                    config_path=config_path,
+                    args=[
+                        "create_session",
+                        "--config-path",
+                        str(config_path),
+                        "--session-id",
+                        session_id,
+                        "--user-id",
+                        user_id,
+                    ],
+                )
+                session = response.get("session") if isinstance(response.get("session"), dict) else {}
+            except Exception as fallback_exc:
+                return _error("RUNTIME_UNAVAILABLE", str(fallback_exc))
         session_id = str(session.get("id") or session_id)
         self._session_agents[session_id] = agent_id
         updated_raw = session.get("last_update_time")
@@ -470,13 +584,13 @@ class ClientApiCoordinator:
             }
         )
 
-    def get_session_messages(self, session_id: str) -> dict[str, Any]:
+    def get_session_messages(self, session_id: str, *, user_id: str = "ppx-client-user") -> dict[str, Any]:
         """Return projected message history for one session."""
 
         agent_id = self._session_agents.get(session_id)
         if not agent_id:
             for candidate in list_enabled_agent_names(self.data_dir):
-                sessions = self.list_sessions(candidate)
+                sessions = self.list_sessions(candidate, user_id=user_id)
                 if not sessions.get("ok"):
                     continue
                 items = sessions["data"].get("items", [])
@@ -488,13 +602,24 @@ class ClientApiCoordinator:
             return _error("SESSION_NOT_FOUND", f"Session '{session_id}' was not found.")
         config_path = agent_config_path(agent_id, self.data_dir)
         try:
-            response = _run_worker_command(
-                config_path=config_path,
-                args=["get_session", "--config-path", str(config_path), "--session-id", session_id],
-            )
+            session = self._get_session_direct(config_path, user_id=user_id, session_id=session_id)
         except Exception as exc:
-            return _error("RUNTIME_UNAVAILABLE", str(exc))
-        session = response.get("session") if isinstance(response.get("session"), dict) else None
+            _debug(
+                "client_api.get_session.direct_failed",
+                {
+                    "agent_id": agent_id,
+                    "session_id": session_id,
+                    "error": str(exc),
+                },
+            )
+            try:
+                response = _run_worker_command(
+                    config_path=config_path,
+                    args=["get_session", "--config-path", str(config_path), "--session-id", session_id, "--user-id", user_id],
+                )
+                session = response.get("session") if isinstance(response.get("session"), dict) else None
+            except Exception as fallback_exc:
+                return _error("RUNTIME_UNAVAILABLE", str(fallback_exc))
         if session is None:
             return _error("SESSION_NOT_FOUND", f"Session '{session_id}' was not found.")
         events = session.get("events") if isinstance(session.get("events"), list) else []
