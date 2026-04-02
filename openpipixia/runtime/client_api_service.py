@@ -284,6 +284,14 @@ class RunEnvelope:
     payload: dict[str, Any]
 
 
+@dataclass(slots=True)
+class _TimedCacheEntry:
+    """One short-lived in-memory cache entry."""
+
+    value: Any
+    expires_at: float
+
+
 class RunHandle:
     """Track one running worker subprocess and its replayable SSE events."""
 
@@ -380,11 +388,41 @@ class RunHandle:
 class ClientApiCoordinator:
     """Coordinate local client-facing HTTP requests and background run streams."""
 
+    _CACHE_TTL_SECONDS = 5.0
+
     def __init__(self, *, data_dir: Path | None = None) -> None:
         self.data_dir = data_dir or get_data_dir()
         self._session_agents: dict[str, str] = {}
         self._runs: dict[str, RunHandle] = {}
         self._lock = threading.Lock()
+        self._sessions_cache: dict[tuple[str, str], _TimedCacheEntry] = {}
+        self._messages_cache: dict[tuple[str, str], _TimedCacheEntry] = {}
+
+    def _read_cache(self, cache: dict[tuple[str, str], _TimedCacheEntry], key: tuple[str, str]) -> Any | None:
+        now_ts = dt.datetime.now().timestamp()
+        with self._lock:
+            entry = cache.get(key)
+            if entry is None:
+                return None
+            if entry.expires_at < now_ts:
+                cache.pop(key, None)
+                return None
+            return entry.value
+
+    def _write_cache(self, cache: dict[tuple[str, str], _TimedCacheEntry], key: tuple[str, str], value: Any) -> None:
+        with self._lock:
+            cache[key] = _TimedCacheEntry(
+                value=value,
+                expires_at=dt.datetime.now().timestamp() + self._CACHE_TTL_SECONDS,
+            )
+
+    def _invalidate_agent_cache(self, agent_id: str, *, user_id: str) -> None:
+        with self._lock:
+            self._sessions_cache.pop((agent_id, user_id), None)
+
+    def _invalidate_session_cache(self, session_id: str, *, user_id: str) -> None:
+        with self._lock:
+            self._messages_cache.pop((session_id, user_id), None)
 
     def _read_sessions_direct(self, config_path: Path, *, user_id: str) -> list[dict[str, Any]]:
         """Read session summaries directly from the per-agent SQLite store."""
@@ -488,6 +526,11 @@ class ClientApiCoordinator:
         config_path = agent_config_path(agent_id, self.data_dir)
         if not config_path.exists():
             return _error("AGENT_NOT_FOUND", f"Agent '{agent_id}' was not found.")
+        cache_key = (agent_id, user_id)
+        cached = self._read_cache(self._sessions_cache, cache_key)
+        if cached is not None:
+            _debug("client_api.list_sessions.cache_hit", {"agent_id": agent_id, "user_id": user_id, "count": len(cached)})
+            return _ok({"items": cached})
         try:
             sessions = self._read_sessions_direct(config_path, user_id=user_id)
         except Exception as exc:
@@ -528,6 +571,7 @@ class ClientApiCoordinator:
                 }
             )
         items.sort(key=lambda item: item["updated_at"], reverse=True)
+        self._write_cache(self._sessions_cache, cache_key, items)
         return _ok({"items": items})
 
     def create_session(self, agent_id: str, *, user_id: str = "ppx-client-user") -> dict[str, Any]:
@@ -566,6 +610,8 @@ class ClientApiCoordinator:
                 return _error("RUNTIME_UNAVAILABLE", str(fallback_exc))
         session_id = str(session.get("id") or session_id)
         self._session_agents[session_id] = agent_id
+        self._invalidate_agent_cache(agent_id, user_id=user_id)
+        self._invalidate_session_cache(session_id, user_id=user_id)
         updated_raw = session.get("last_update_time")
         if isinstance(updated_raw, (int, float)):
             updated_at = dt.datetime.fromtimestamp(updated_raw, tz=dt.timezone.utc).astimezone().isoformat()
@@ -587,6 +633,11 @@ class ClientApiCoordinator:
     def get_session_messages(self, session_id: str, *, user_id: str = "ppx-client-user") -> dict[str, Any]:
         """Return projected message history for one session."""
 
+        cache_key = (session_id, user_id)
+        cached = self._read_cache(self._messages_cache, cache_key)
+        if cached is not None:
+            _debug("client_api.get_session.cache_hit", {"session_id": session_id, "user_id": user_id, "count": len(cached)})
+            return _ok({"items": cached})
         agent_id = self._session_agents.get(session_id)
         if not agent_id:
             for candidate in list_enabled_agent_names(self.data_dir):
@@ -630,6 +681,7 @@ class ClientApiCoordinator:
             for message in [project_session_event(event, session_id)]
             if message is not None
         ]
+        self._write_cache(self._messages_cache, cache_key, messages)
         return _ok({"items": messages})
 
     def create_run(self, agent_id: str, session_id: str, text: str, *, user_id: str = "ppx-client-user") -> dict[str, Any]:
@@ -665,6 +717,8 @@ class ClientApiCoordinator:
         with self._lock:
             self._runs[run_id] = handle
         self._session_agents[session_id] = agent_id
+        self._invalidate_agent_cache(agent_id, user_id=user_id)
+        self._invalidate_session_cache(session_id, user_id=user_id)
         _debug(
             "client_api.create_run",
             {

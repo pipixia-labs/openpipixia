@@ -254,3 +254,62 @@ def test_client_api_reads_sessions_directly_without_worker(tmp_path: Path, monke
     messages = coordinator.get_session_messages("writer-seeded")
     assert messages["ok"] is True
     assert messages["data"]["items"][0]["parts"][0]["text"] == "Hello direct path"
+
+
+def test_list_sessions_uses_short_cache(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "global_config.json").write_text(
+        json.dumps({"agents": [{"name": "writer", "enabled": True}]}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / "writer"
+    agent_dir.mkdir()
+    (agent_dir / "config.json").write_text(json.dumps({"agent": {"workspace": "workspace/writer"}}), encoding="utf-8")
+
+    calls = {"count": 0}
+
+    def _fake_read(self, config_path: Path, *, user_id: str) -> list[dict[str, object]]:
+        calls["count"] += 1
+        return [{"id": "session-1", "last_update_time": 1_700_000_000, "last_preview": "cached"}]
+
+    monkeypatch.setattr(ClientApiCoordinator, "_read_sessions_direct", _fake_read)
+
+    coordinator = ClientApiCoordinator(data_dir=tmp_path)
+    first = coordinator.list_sessions("writer")
+    second = coordinator.list_sessions("writer")
+
+    assert first["ok"] is True
+    assert second["ok"] is True
+    assert calls["count"] == 1
+
+
+def test_create_session_invalidates_session_list_cache(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "global_config.json").write_text(
+        json.dumps({"agents": [{"name": "writer", "enabled": True}]}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / "writer"
+    agent_dir.mkdir()
+    (agent_dir / "config.json").write_text(json.dumps({"agent": {"workspace": "workspace/writer"}}), encoding="utf-8")
+
+    calls = {"count": 0}
+
+    def _fake_read(self, config_path: Path, *, user_id: str) -> list[dict[str, object]]:
+        calls["count"] += 1
+        return [{"id": f"session-{calls['count']}", "last_update_time": 1_700_000_000, "last_preview": "cached"}]
+
+    monkeypatch.setattr(ClientApiCoordinator, "_read_sessions_direct", _fake_read)
+    monkeypatch.setattr(
+        ClientApiCoordinator,
+        "_create_session_direct",
+        lambda self, config_path, *, user_id, session_id: {"id": session_id, "last_update_time": 1_700_000_001},
+    )
+
+    coordinator = ClientApiCoordinator(data_dir=tmp_path)
+    before = coordinator.list_sessions("writer")
+    created = coordinator.create_session("writer")
+    after = coordinator.list_sessions("writer")
+
+    assert before["data"]["items"][0]["id"] == "session-1"
+    assert created["ok"] is True
+    assert after["data"]["items"][0]["id"] == "session-2"
+    assert calls["count"] == 2
