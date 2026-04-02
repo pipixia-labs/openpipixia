@@ -181,6 +181,49 @@ def _preview_value(value: Any, fallback: str) -> str:
     return dumped[:320] + ("..." if len(dumped) > 320 else "")
 
 
+def _step_ref_payload(*, step_id: str, title: str, status: str, detail: str) -> dict[str, Any]:
+    """Build one client-facing step part payload."""
+
+    return {
+        "type": "step_ref",
+        "step_id": step_id,
+        "title": title,
+        "status": status,
+        "detail": detail,
+    }
+
+
+def _message_payload(
+    *,
+    message_id: str,
+    session_id: str,
+    role: str,
+    parts: list[dict[str, Any]],
+    status: str,
+) -> dict[str, Any]:
+    """Build one client-facing message payload."""
+
+    return {
+        "id": message_id,
+        "session_id": session_id,
+        "role": role,
+        "parts": parts,
+        "status": status,
+        "created_at": _iso_now(),
+        "metadata": {},
+    }
+
+
+def _error_part_payload(*, code: str, text: str) -> dict[str, Any]:
+    """Build one client-facing error part payload."""
+
+    return {
+        "type": "error",
+        "error_code": code,
+        "text": text,
+    }
+
+
 def _event_preview_text(event: dict[str, Any]) -> str:
     """Build a lightweight session preview string from one serialized event."""
 
@@ -357,11 +400,23 @@ class RunHandle:
         if self.process.poll() is None:
             self.process.terminate()
         self.publish(
+            "message.cancelled",
+            {
+                "run_id": self.run_id,
+                "agent_id": self.agent_id,
+                "session_id": self.session_id,
+                "message_id": self.assistant_message_id,
+                "status": "cancelled",
+            },
+        )
+        self.publish(
             "run.cancelled",
             {
                 "run_id": self.run_id,
                 "agent_id": self.agent_id,
                 "session_id": self.session_id,
+                "message_id": self.assistant_message_id,
+                "status": "cancelled",
             },
         )
         self.finish()
@@ -743,15 +798,16 @@ class ClientApiCoordinator:
             "message.created",
             {
                 "run_id": run_id,
-                "message": {
-                    "id": handle.assistant_message_id,
-                    "session_id": session_id,
-                    "role": "assistant",
-                    "parts": [],
-                    "status": "streaming",
-                    "created_at": _iso_now(),
-                    "metadata": {},
-                },
+                "agent_id": agent_id,
+                "session_id": session_id,
+                "message_id": handle.assistant_message_id,
+                "message": _message_payload(
+                    message_id=handle.assistant_message_id,
+                    session_id=session_id,
+                    role="assistant",
+                    parts=[],
+                    status="streaming",
+                ),
             },
         )
         thread = threading.Thread(
@@ -851,17 +907,19 @@ class ClientApiCoordinator:
                                 "step.updated",
                                 {
                                     "run_id": handle.run_id,
+                                    "agent_id": handle.agent_id,
+                                    "session_id": handle.session_id,
                                     "message_id": handle.assistant_message_id,
-                                    "step": {
-                                        "step_id": step_id,
-                                        "title": str(function_call.get("name") or "tool"),
-                                        "status": "running",
-                                        "detail": (
+                                    "step": _step_ref_payload(
+                                        step_id=step_id,
+                                        title=str(function_call.get("name") or "tool"),
+                                        status="running",
+                                        detail=(
                                             "Background task is running.\n\n" + _preview_value(function_call.get("args"), "No tool arguments")
                                             if step_id in long_running_ids
                                             else _preview_value(function_call.get("args"), "No tool arguments")
                                         ),
-                                    },
+                                    ),
                                 },
                             )
                         function_response = raw_part.get("function_response")
@@ -879,13 +937,15 @@ class ClientApiCoordinator:
                                 "step.updated",
                                 {
                                     "run_id": handle.run_id,
+                                    "agent_id": handle.agent_id,
+                                    "session_id": handle.session_id,
                                     "message_id": handle.assistant_message_id,
-                                    "step": {
-                                        "step_id": str(function_response.get("id") or "step"),
-                                        "title": str(function_response.get("name") or "tool"),
-                                        "status": "completed",
-                                        "detail": _preview_value(function_response.get("response"), "Tool returned without a payload"),
-                                    },
+                                    "step": _step_ref_payload(
+                                        step_id=str(function_response.get("id") or "step"),
+                                        title=str(function_response.get("name") or "tool"),
+                                        status="completed",
+                                        detail=_preview_value(function_response.get("response"), "Tool returned without a payload"),
+                                    ),
                                 },
                             )
             elif event_type == "delta":
@@ -901,7 +961,10 @@ class ClientApiCoordinator:
                     "message.delta",
                     {
                         "run_id": handle.run_id,
+                        "agent_id": handle.agent_id,
+                        "session_id": handle.session_id,
                         "message_id": handle.assistant_message_id,
+                        "status": "streaming",
                         "part": {
                             "type": "markdown",
                             "text": final_text,
@@ -921,16 +984,17 @@ class ClientApiCoordinator:
                     "message.completed",
                     {
                         "run_id": handle.run_id,
+                        "agent_id": handle.agent_id,
+                        "session_id": handle.session_id,
                         "message_id": handle.assistant_message_id,
-                        "message": {
-                            "id": handle.assistant_message_id,
-                            "session_id": handle.session_id,
-                            "role": "assistant",
-                            "parts": [{"type": "markdown", "text": final_text}],
-                            "status": "completed",
-                            "created_at": _iso_now(),
-                            "metadata": {},
-                        },
+                        "status": "completed",
+                        "message": _message_payload(
+                            message_id=handle.assistant_message_id,
+                            session_id=handle.session_id,
+                            role="assistant",
+                            parts=[{"type": "markdown", "text": final_text}],
+                            status="completed",
+                        ),
                     },
                 )
             elif event_type == "error":
@@ -947,12 +1011,11 @@ class ClientApiCoordinator:
                     "message.failed",
                     {
                         "run_id": handle.run_id,
+                        "agent_id": handle.agent_id,
+                        "session_id": handle.session_id,
                         "message_id": handle.assistant_message_id,
-                        "error": {
-                            "type": "error",
-                            "error_code": "RUN_FAILED",
-                            "text": error_message,
-                        },
+                        "status": "failed",
+                        "error": _error_part_payload(code="RUN_FAILED", text=error_message),
                     },
                 )
                 handle.publish(
@@ -998,6 +1061,7 @@ class ClientApiCoordinator:
                 "run_id": handle.run_id,
                 "agent_id": handle.agent_id,
                 "session_id": handle.session_id,
+                "message_id": handle.assistant_message_id,
                 "status": "failed" if handle.failed else "completed",
             },
         )

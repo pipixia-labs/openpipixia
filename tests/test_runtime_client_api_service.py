@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import time
 from pathlib import Path
 
 from google.adk.events.event import Event
@@ -32,6 +33,31 @@ class _FakeProcess:
     def wait(self) -> int:
         self.terminated = True
         return self._returncode
+
+
+class _PendingProcess:
+    def __init__(self) -> None:
+        self.stdout = self
+        self.stderr = io.StringIO("")
+        self.terminated = False
+
+    def __iter__(self) -> "_PendingProcess":
+        return self
+
+    def __next__(self) -> str:
+        while not self.terminated:
+            time.sleep(0.01)
+        raise StopIteration
+
+    def poll(self) -> int | None:
+        return None if not self.terminated else 0
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def wait(self) -> int:
+        self.terminated = True
+        return 0
 
 
 def test_list_enabled_agent_names_reads_global_config(tmp_path: Path) -> None:
@@ -163,6 +189,103 @@ def test_create_run_streams_replayable_events(tmp_path: Path, monkeypatch) -> No
     assert "message.delta" in events
     assert "message.completed" in events
     assert "run.finished" in events
+
+
+def test_create_run_emits_normalized_event_context(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "global_config.json").write_text(
+        json.dumps({"agents": [{"name": "writer", "enabled": True}]}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / "writer"
+    agent_dir.mkdir()
+    (agent_dir / "config.json").write_text(json.dumps({"agent": {"workspace": "workspace/writer"}}), encoding="utf-8")
+
+    stdout_lines = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "event",
+                    "event": {
+                        "content": {
+                            "parts": [
+                                {"function_call": {"id": "call_ctx", "name": "inspect_repo", "args": {"path": "."}}},
+                                {"function_response": {"id": "call_ctx", "name": "inspect_repo", "response": {"ok": True}}},
+                            ]
+                        }
+                    },
+                }
+            ),
+            json.dumps({"type": "delta", "text": "hello"}),
+            json.dumps({"type": "final", "text": "hello world"}),
+        ]
+    )
+
+    monkeypatch.setattr(
+        "openpipixia.runtime.client_api_service.subprocess.Popen",
+        lambda *args, **kwargs: _FakeProcess(stdout_lines),
+    )
+
+    coordinator = ClientApiCoordinator(data_dir=tmp_path)
+    payload = coordinator.create_run("writer", "session_ctx", "hi")
+    run_id = payload["data"]["run"]["id"]
+    handle = coordinator._runs[run_id]
+    assert handle.done.wait(timeout=1.0)
+
+    subscriber = coordinator.stream_run_events(run_id)
+    assert subscriber is not None
+
+    envelopes = []
+    while True:
+        item = subscriber.get(timeout=1.0)
+        if item is None:
+            break
+        envelopes.append((item.event, item.payload))
+
+    by_event = {name: payload for name, payload in envelopes}
+
+    assert by_event["message.created"]["agent_id"] == "writer"
+    assert by_event["message.created"]["session_id"] == "session_ctx"
+    assert by_event["message.created"]["message_id"] == handle.assistant_message_id
+    assert by_event["step.updated"]["step"]["type"] == "step_ref"
+    assert by_event["message.delta"]["status"] == "streaming"
+    assert by_event["message.completed"]["status"] == "completed"
+    assert by_event["run.finished"]["message_id"] == handle.assistant_message_id
+
+
+def test_cancel_run_emits_cancelled_message_and_run(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "global_config.json").write_text(
+        json.dumps({"agents": [{"name": "writer", "enabled": True}]}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / "writer"
+    agent_dir.mkdir()
+    (agent_dir / "config.json").write_text(json.dumps({"agent": {"workspace": "workspace/writer"}}), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "openpipixia.runtime.client_api_service.subprocess.Popen",
+        lambda *args, **kwargs: _PendingProcess(),
+    )
+
+    coordinator = ClientApiCoordinator(data_dir=tmp_path)
+    payload = coordinator.create_run("writer", "session_cancel", "hi")
+    run_id = payload["data"]["run"]["id"]
+    cancel_payload = coordinator.cancel_run(run_id)
+
+    assert cancel_payload["ok"] is True
+
+    subscriber = coordinator.stream_run_events(run_id)
+    assert subscriber is not None
+    events = []
+    while True:
+        item = subscriber.get(timeout=1.0)
+        if item is None:
+            break
+        events.append((item.event, item.payload))
+
+    by_event = {name: payload for name, payload in events}
+    assert by_event["message.cancelled"]["status"] == "cancelled"
+    assert by_event["message.cancelled"]["message_id"].startswith("msg_")
+    assert by_event["run.cancelled"]["status"] == "cancelled"
 
 
 def test_create_run_tolerates_null_long_running_tool_ids(tmp_path: Path, monkeypatch) -> None:
