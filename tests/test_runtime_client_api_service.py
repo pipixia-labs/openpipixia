@@ -132,6 +132,32 @@ def test_project_session_event_skips_unrenderable_events() -> None:
     assert message is None
 
 
+def test_project_session_event_strips_request_time_prefix_from_user_text() -> None:
+    message = project_session_event(
+        {
+            "id": "evt_request_time",
+            "author": "user",
+            "timestamp": 1_717_171_719,
+            "content": {
+                "parts": [
+                    {
+                        "text": (
+                            "Current request time: 2026-04-03T12:32:17+08:00 (CST)\n"
+                            "Use this as the reference 'now' for relative time expressions in this message.\n\n"
+                            "今天日期给我一下"
+                        )
+                    }
+                ]
+            },
+        },
+        "session_request_time",
+    )
+
+    assert message is not None
+    assert message["role"] == "user"
+    assert message["parts"] == [{"type": "markdown", "text": "今天日期给我一下"}]
+
+
 def test_create_run_streams_replayable_events(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "global_config.json").write_text(
         json.dumps({"agents": [{"name": "writer", "enabled": True}]}),

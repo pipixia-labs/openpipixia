@@ -181,6 +181,23 @@ def _preview_value(value: Any, fallback: str) -> str:
     return dumped[:320] + ("..." if len(dumped) > 320 else "")
 
 
+def _strip_request_time_prefix(text: str) -> str:
+    """Remove runtime-injected request-time guidance from persisted user text."""
+
+    stripped = text.strip()
+    if not stripped.startswith("Current request time: "):
+        return text
+
+    lines = stripped.splitlines()
+    if len(lines) < 2 or "Use this as the reference 'now' for relative time expressions" not in lines[1]:
+        return text
+
+    body_lines = lines[2:]
+    while body_lines and not body_lines[0].strip():
+        body_lines = body_lines[1:]
+    return "\n".join(body_lines).strip()
+
+
 def _step_ref_payload(*, step_id: str, title: str, status: str, detail: str) -> dict[str, Any]:
     """Build one client-facing step part payload."""
 
@@ -268,7 +285,9 @@ def _event_preview_text(event: dict[str, Any]) -> str:
             continue
         text = raw_part.get("text")
         if isinstance(text, str) and text.strip():
-            texts.append(text.strip())
+            normalized_text = _strip_request_time_prefix(text)
+            if normalized_text.strip():
+                texts.append(normalized_text.strip())
     return " ".join(texts).strip()
 
 
@@ -306,7 +325,9 @@ def project_session_event(event: dict[str, Any], session_id: str) -> dict[str, A
             continue
         text = raw_part.get("text")
         if isinstance(text, str) and text.strip():
-            parts.append({"type": "markdown", "text": text})
+            normalized_text = _strip_request_time_prefix(text)
+            if normalized_text.strip():
+                parts.append({"type": "markdown", "text": normalized_text})
         function_call = raw_part.get("function_call")
         if isinstance(function_call, dict):
             parts.append(
