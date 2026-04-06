@@ -3123,6 +3123,7 @@ def _multi_agent_channel_conflict_warnings(config_paths_by_agent: dict[str, Path
         "wecom": ("botId",),
     }
     signature_to_agents: dict[tuple[str, str, str], list[str]] = {}
+    channel_agent_signatures: dict[str, dict[str, set[tuple[str, str]]]] = {}
 
     for agent_name, cfg in loaded.items():
         channels = cfg.get("channels")
@@ -3142,11 +3143,23 @@ def _multi_agent_channel_conflict_warnings(config_paths_by_agent: dict[str, Path
                 if not value:
                     continue
                 signature_to_agents.setdefault((normalized_channel, key, value), []).append(agent_name)
+                channel_agent_signatures.setdefault(normalized_channel, {}).setdefault(agent_name, set()).add((key, value))
 
     for channel_name, agents in sorted(channel_to_agents.items()):
         unique_agents = sorted(set(agents))
         if len(unique_agents) <= 1:
             continue
+        per_agent_signatures = channel_agent_signatures.get(channel_name, {})
+        if channel_name in signature_keys:
+            # Suppress the broad warning when every agent has at least one
+            # non-empty identity signature and those signatures are distinct.
+            all_agents_identified = all(per_agent_signatures.get(agent_name) for agent_name in unique_agents)
+            if all_agents_identified:
+                flattened: list[tuple[str, str]] = []
+                for agent_name in unique_agents:
+                    flattened.extend(sorted(per_agent_signatures.get(agent_name, set())))
+                if len(flattened) == len(set(flattened)):
+                    continue
         warnings.append(
             f"channel '{channel_name}' is enabled by multiple agents ({', '.join(unique_agents)}); "
             "verify webhook/port/account settings manually."

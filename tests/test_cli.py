@@ -273,6 +273,44 @@ class CLITests(unittest.TestCase):
         lines = [call.args[0] for call in mocked_info.call_args_list if call.args]
         self.assertTrue(any("config not found" in line for line in lines))
 
+    def test_multi_agent_channel_conflict_warnings_skip_feishu_when_app_ids_differ(self) -> None:
+        from openpipixia import cli
+
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            config_paths: dict[str, Path] = {}
+            for agent_name, app_id in (("assistant-main", "cli_a"), ("operator-main", "cli_b")):
+                config_path = data_dir / agent_name / "config.json"
+                cfg = cli.default_config()
+                cfg["channels"]["feishu"]["enabled"] = True
+                cfg["channels"]["feishu"]["appId"] = app_id
+                cfg["channels"]["feishu"]["appSecret"] = f"secret-{app_id}"
+                cli.save_config(cfg, config_path)
+                config_paths[agent_name] = config_path
+
+            warnings = cli._multi_agent_channel_conflict_warnings(config_paths)
+
+        self.assertEqual(warnings, [])
+
+    def test_multi_agent_channel_conflict_warnings_warn_on_duplicate_feishu_app_id(self) -> None:
+        from openpipixia import cli
+
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            config_paths: dict[str, Path] = {}
+            for agent_name in ("assistant-main", "operator-main"):
+                config_path = data_dir / agent_name / "config.json"
+                cfg = cli.default_config()
+                cfg["channels"]["feishu"]["enabled"] = True
+                cfg["channels"]["feishu"]["appId"] = "cli_same"
+                cfg["channels"]["feishu"]["appSecret"] = "secret"
+                cli.save_config(cfg, config_path)
+                config_paths[agent_name] = config_path
+
+            warnings = cli._multi_agent_channel_conflict_warnings(config_paths)
+
+        self.assertTrue(any("channel 'feishu' key 'appId' appears duplicated" in item for item in warnings))
+
     def test_cmd_delete_removes_agent_dir_and_global_config_entry(self) -> None:
         from openpipixia import cli
 

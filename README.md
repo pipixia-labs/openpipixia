@@ -66,6 +66,13 @@ Review and edit your configuration files:
 Fill in required provider keys and assign per-agent security settings.
 You can leave channel-specific keys (for example Telegram, Feishu, Weixin, or WeCom) empty at this stage.
 
+Important:
+
+- `ppx create` only creates and enables an agent. It does not automatically turn on Feishu, Telegram, or other channels.
+- Channel settings must be edited in the `config.json` of the agent that is actually enabled and running.
+- If you created new agents such as `assistant-main` / `operator-main` / `manager-main`, but only updated old agent configs like `agent_name_1`, gateway will not use those old channel settings.
+- Before troubleshooting a Feishu connection issue, first run `ppx list` and confirm which agent is enabled, then check that agent's `channels.feishu.enabled`, `appId`, and `appSecret`.
+
 ### 💬 3. Try Local Interactive Mode
 
 ```bash
@@ -75,6 +82,22 @@ ppx --config-path ~/.openpipixia/assistant-main/config.json gateway run --channe
 ### 🛰️ 4. Enable Channel Chat and Start Background Service
 
 For channel keys and secrets, see [`docs/CHANNELS.md`](./docs/CHANNELS.md). After filling in channel keys, start the background gateway for regular usage:
+
+Example for Feishu: if `assistant-main` is the agent you want to connect to Feishu, edit `~/.openpipixia/assistant-main/config.json` and set:
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "enabled": true,
+      "appId": "cli_xxx",
+      "appSecret": "xxx"
+    }
+  }
+}
+```
+
+Do not only update another disabled agent's config, or gateway will still fail to connect that channel for your active agent.
 
 ```bash
 ppx gateway start
