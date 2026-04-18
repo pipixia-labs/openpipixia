@@ -7,7 +7,13 @@ import types
 import unittest
 from unittest.mock import AsyncMock, patch
 
+from google.adk.tools import load_artifacts
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
+
+from openpipixia.runtime.interaction_context import (
+    INTERACTION_CONTEXT_STATE_KEY,
+    MEMORY_INGEST_OFFSET_STATE_KEY,
+)
 
 
 class AgentMemoryTests(unittest.TestCase):
@@ -17,25 +23,83 @@ class AgentMemoryTests(unittest.TestCase):
         tools = agent._build_tools()
         self.assertTrue(any(isinstance(item, PreloadMemoryTool) for item in tools))
 
-    def test_after_agent_memory_callback_persists_session(self) -> None:
+    def test_build_tools_includes_load_artifacts(self) -> None:
         from openpipixia import agent
 
-        callback_context = types.SimpleNamespace(add_session_to_memory=AsyncMock(return_value=None))
+        tools = agent._build_tools()
+        self.assertIn(load_artifacts, tools)
+
+    def test_before_agent_memory_callback_sets_fallback_offset(self) -> None:
+        from openpipixia import agent
+
+        callback_context = types.SimpleNamespace(
+            state={},
+            session=types.SimpleNamespace(events=[object(), object(), object()]),
+        )
+
+        asyncio.run(agent._before_agent_memory_callback(callback_context))
+
+        self.assertEqual(callback_context.state[MEMORY_INGEST_OFFSET_STATE_KEY], 3)
+
+    def test_after_agent_memory_callback_persists_new_events(self) -> None:
+        from openpipixia import agent
+
+        event_1 = object()
+        event_2 = object()
+        callback_context = types.SimpleNamespace(
+            state={
+                MEMORY_INGEST_OFFSET_STATE_KEY: 1,
+                INTERACTION_CONTEXT_STATE_KEY: {
+                    "requester_principal_id": "u1",
+                    "memory_ingest_enabled": True,
+                },
+            },
+            session=types.SimpleNamespace(events=[object(), event_1, event_2]),
+            add_events_to_memory=AsyncMock(return_value=None),
+        )
+
         asyncio.run(agent._after_agent_memory_callback(callback_context))
-        callback_context.add_session_to_memory.assert_awaited_once()
+
+        callback_context.add_events_to_memory.assert_awaited_once()
+        kwargs = callback_context.add_events_to_memory.await_args.kwargs
+        self.assertEqual(kwargs["events"], [event_1, event_2])
+        self.assertEqual(kwargs["custom_metadata"]["requester_principal_id"], "u1")
+        self.assertEqual(kwargs["custom_metadata"]["ingest_reason"], "after_agent_callback")
+
+    def test_after_agent_memory_callback_skips_silent_service_principal(self) -> None:
+        from openpipixia import agent
+
+        callback_context = types.SimpleNamespace(
+            state={
+                MEMORY_INGEST_OFFSET_STATE_KEY: 0,
+                INTERACTION_CONTEXT_STATE_KEY: {
+                    "requester_principal_id": "heartbeat",
+                    "memory_ingest_enabled": False,
+                },
+            },
+            session=types.SimpleNamespace(events=[object()]),
+            add_events_to_memory=AsyncMock(return_value=None),
+        )
+
+        asyncio.run(agent._after_agent_memory_callback(callback_context))
+
+        callback_context.add_events_to_memory.assert_not_awaited()
 
     def test_after_agent_memory_callback_ignores_missing_memory_service(self) -> None:
         from openpipixia import agent
 
         callback_context = types.SimpleNamespace(
-            add_session_to_memory=AsyncMock(side_effect=ValueError("memory service is not available"))
+            state={MEMORY_INGEST_OFFSET_STATE_KEY: 0},
+            session=types.SimpleNamespace(events=[object()]),
+            add_events_to_memory=AsyncMock(side_effect=ValueError("memory service is not available")),
         )
         asyncio.run(agent._after_agent_memory_callback(callback_context))
-        callback_context.add_session_to_memory.assert_awaited_once()
+        callback_context.add_events_to_memory.assert_awaited_once()
 
     def test_root_agent_registers_after_agent_callback(self) -> None:
         from openpipixia import agent
 
+        self.assertIs(agent.root_agent.before_agent_callback, agent._before_agent_memory_callback)
         self.assertIs(agent.root_agent.after_agent_callback, agent._after_agent_memory_callback)
 
     def test_root_agent_registers_workspace_bootstrap_before_model_callback(self) -> None:

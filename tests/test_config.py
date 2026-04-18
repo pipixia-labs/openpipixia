@@ -125,7 +125,7 @@ class ConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_cfg = load_runtime_config(Path(tmp) / "runtime.json")
         self.assertTrue(runtime_cfg["env"]["OPENPPX_MEMORY_ENABLED"])
-        self.assertEqual(runtime_cfg["env"]["OPENPPX_MEMORY_BACKEND"], "markdown")
+        self.assertEqual(runtime_cfg["env"]["OPENPPX_MEMORY_BACKEND"], "sqlite")
         self.assertEqual(runtime_cfg["env"]["OPENPPX_COMPACTION_INTERVAL"], 8)
         self.assertEqual(runtime_cfg["env"]["OPENPPX_MCP_DOCTOR_TIMEOUT_SECONDS"], 5)
         self.assertEqual(runtime_cfg["env"]["OPENPPX_DEBUG_MAX_CHARS"], 0)
@@ -555,7 +555,7 @@ class ConfigTests(unittest.TestCase):
             bootstrap_env_from_config(path)
 
         self.assertEqual(os.environ["OPENPPX_MEMORY_ENABLED"], "1")
-        self.assertEqual(os.environ["OPENPPX_MEMORY_BACKEND"], "markdown")
+        self.assertEqual(os.environ["OPENPPX_MEMORY_BACKEND"], "sqlite")
         self.assertEqual(os.environ["OPENPPX_COMPACTION_INTERVAL"], "8")
         self.assertEqual(os.environ["OPENPPX_MCP_DOCTOR_TIMEOUT_SECONDS"], "5")
         self.assertEqual(os.environ["OPENPPX_DEBUG_MAX_CHARS"], "0")

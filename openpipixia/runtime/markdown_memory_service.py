@@ -13,12 +13,23 @@ import json
 import re
 import threading
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timezone
 from pathlib import Path
 
 from google.adk.memory.base_memory_service import BaseMemoryService, SearchMemoryResponse
 from google.adk.memory.memory_entry import MemoryEntry
 from google.genai import types
+
+from .memory_shared import (
+    event_text_for_history,
+    event_text_for_memory,
+    event_timestamp_iso,
+    infer_fact_category,
+    is_user_author,
+    iso_from_unix_seconds,
+    memory_entry_text,
+    now_iso,
+    tokenize,
+)
 
 _MEMORY_FILE = "MEMORY.md"
 _HISTORY_FILE = "HISTORY.md"
@@ -32,151 +43,12 @@ _HISTORY_HEADER = """# Conversation History
 Append-only raw text transcript of conversations.
 Do not rewrite existing content.
 """
-_FACT_CATEGORY_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    (
-        "preferences",
-        (
-            "i prefer",
-            "i like",
-            "i don't like",
-            "i dislike",
-            "prefer to",
-            "preference",
-            "我喜欢",
-            "我不喜欢",
-            "偏好",
-            "习惯",
-        ),
-    ),
-    (
-        "relationships",
-        (
-            "my wife",
-            "my husband",
-            "my girlfriend",
-            "my boyfriend",
-            "my friend",
-            "my manager",
-            "my team",
-            "colleague",
-            "关系",
-            "朋友",
-            "同事",
-            "家人",
-            "团队",
-        ),
-    ),
-    (
-        "context",
-        (
-            "my project",
-            "our project",
-            "working on",
-            "deadline",
-            "background",
-            "my name is",
-            "i am",
-            "i'm",
-            "我叫",
-            "我是",
-            "项目",
-            "背景",
-            "目标",
-            "计划",
-            "仓库",
-        ),
-    ),
-)
-
-
 def _sanitize_scope(value: str) -> str:
     """Sanitize scope keys for filesystem-safe paths."""
+    import re
+
     sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", value.strip())
     return sanitized or "_"
-
-
-def _tokenize(text: str) -> set[str]:
-    """Tokenize text for lightweight keyword matching."""
-    return {token.lower() for token in re.findall(r"[A-Za-z0-9_\u4e00-\u9fff]+", text)}
-
-
-def _event_text_lines(event: object) -> list[str]:
-    """Extract text parts from an ADK event-like object in original order."""
-    content = getattr(event, "content", None)
-    if not content or not getattr(content, "parts", None):
-        return []
-
-    lines: list[str] = []
-    for part in content.parts:
-        text = getattr(part, "text", None)
-        if not isinstance(text, str):
-            continue
-        if not text:
-            continue
-        lines.append(text)
-    return lines
-
-
-def _event_text_for_memory(event: object) -> str:
-    """Return a normalized text string used for memory fact extraction."""
-    lines = _event_text_lines(event)
-    if not lines:
-        return ""
-    return " ".join(segment.strip() for segment in lines if segment.strip()).strip()
-
-
-def _event_text_for_history(event: object) -> str:
-    """Return raw text transcript representation used in HISTORY.md."""
-    lines = _event_text_lines(event)
-    if not lines:
-        return ""
-    return "\n".join(lines)
-
-
-def _iso_from_unix_seconds(raw: object) -> str | None:
-    """Convert unix timestamp seconds to ISO8601 string when possible."""
-    if raw is None:
-        return None
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
-        return None
-    return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
-
-
-def _now_iso() -> str:
-    """Return current UTC time in ISO8601 format."""
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _event_timestamp_iso(event: object) -> str:
-    """Resolve event timestamp, falling back to current time when missing."""
-    return _iso_from_unix_seconds(getattr(event, "timestamp", None)) or _now_iso()
-
-
-def _is_user_author(author: str) -> bool:
-    """Best-effort check whether an event author represents the user side."""
-    normalized = (author or "").strip().lower()
-    if not normalized:
-        return False
-    if normalized in {"user", "human"}:
-        return True
-    if normalized.endswith("user"):
-        return True
-    return False
-
-
-def _infer_fact_category(text: str) -> str | None:
-    """Infer long-term fact category from one text snippet.
-
-    Returns one of ``preferences``, ``context``, ``relationships``, or ``None``
-    when the text does not look like a durable fact.
-    """
-    lowered = text.lower()
-    for category, keywords in _FACT_CATEGORY_KEYWORDS:
-        if any(keyword in lowered for keyword in keywords):
-            return category
-    return None
 
 
 class MarkdownMemoryService(BaseMemoryService):
@@ -350,12 +222,12 @@ class MarkdownMemoryService(BaseMemoryService):
                 if event_id and event_id in known_event_ids:
                     continue
 
-                history_text = _event_text_for_history(event)
-                memory_text = _event_text_for_memory(event)
+                history_text = event_text_for_history(event)
+                memory_text = event_text_for_memory(event)
                 if not history_text and not memory_text:
                     continue
 
-                timestamp = _event_timestamp_iso(event)
+                timestamp = event_timestamp_iso(event)
                 author = str(getattr(event, "author", "") or "").strip() or "unknown"
                 session_label = (session_id or "-").strip() or "-"
 
@@ -373,8 +245,8 @@ class MarkdownMemoryService(BaseMemoryService):
                     )
 
                 # Keep long-term memory focused on user-origin durable facts only.
-                if memory_text and _is_user_author(author):
-                    category = _infer_fact_category(memory_text)
+                if memory_text and is_user_author(author):
+                    category = infer_fact_category(memory_text)
                     if category:
                         memory_entries.append(
                             {
@@ -405,7 +277,7 @@ class MarkdownMemoryService(BaseMemoryService):
         *,
         app_name: str,
         user_id: str,
-        memories: Sequence[str],
+        memories: Sequence[MemoryEntry],
         custom_metadata: Mapping[str, object] | None = None,
     ) -> None:
         """Append explicit long-term memory items into MEMORY.md.
@@ -419,16 +291,16 @@ class MarkdownMemoryService(BaseMemoryService):
         session_label = "-"
         if custom_metadata is not None:
             session_label = str(custom_metadata.get("session_id", "-") or "-")
-        timestamp = _now_iso()
+        timestamp = now_iso()
         if custom_metadata is not None:
-            timestamp = _iso_from_unix_seconds(custom_metadata.get("dialogue_timestamp")) or timestamp
+            timestamp = iso_from_unix_seconds(custom_metadata.get("dialogue_timestamp")) or timestamp
 
         entries: list[dict[str, str]] = []
         for raw in memories:
-            text = (raw or "").strip()
+            text = memory_entry_text(raw)
             if not text:
                 continue
-            category = _infer_fact_category(text) or "context"
+            category = infer_fact_category(text) or "context"
             entries.append(
                 {
                     "timestamp": timestamp,
@@ -457,7 +329,7 @@ class MarkdownMemoryService(BaseMemoryService):
         if not memory_path.exists():
             return response
 
-        query_tokens = _tokenize(query)
+        query_tokens = tokenize(query)
         if not query_tokens:
             return response
 
@@ -473,7 +345,7 @@ class MarkdownMemoryService(BaseMemoryService):
                 continue
             if row_user and row_user != user_id:
                 continue
-            if query_tokens.isdisjoint(_tokenize(text)):
+            if query_tokens.isdisjoint(tokenize(text)):
                 continue
             response.memories.append(
                 MemoryEntry(

@@ -319,7 +319,7 @@ def _default_runtime_env_overrides() -> dict[str, Any]:
     """
     return {
         "OPENPPX_MEMORY_ENABLED": True,
-        "OPENPPX_MEMORY_BACKEND": "markdown",
+        "OPENPPX_MEMORY_BACKEND": "sqlite",
         # Keep empty by default so memory path follows the active agent home.
         _MEMORY_MARKDOWN_DIR_ENV: "",
         "OPENPPX_COMPACTION_ENABLED": True,

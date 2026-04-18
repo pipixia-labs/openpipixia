@@ -18,7 +18,14 @@ from typing import Any
 
 from ..core.config import get_data_dir
 from ..core.logging_utils import debug_logging_enabled, emit_debug
+from .access_policy import AccessPolicy
+from .agent_access_store import AgentAccessStore
+from .identity_models import ResolvedPrincipal
+from .identity_store import IdentityStore
+from .memory_query_service import MemoryQueryService
+from .memory_shared import memory_entry_text
 from .session_service import SessionConfig, create_session_service
+from .sqlite_memory_service import SQLiteMemoryService
 
 
 def _iso_now() -> str:
@@ -502,13 +509,72 @@ class ClientApiCoordinator:
 
     _CACHE_TTL_SECONDS = 5.0
 
-    def __init__(self, *, data_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        data_dir: Path | None = None,
+        identity_store: IdentityStore | None = None,
+        agent_access_store: AgentAccessStore | None = None,
+        access_policy: AccessPolicy | None = None,
+        memory_query_service: MemoryQueryService | None = None,
+    ) -> None:
         self.data_dir = data_dir or get_data_dir()
+        default_identity_db_path = self.data_dir / "database" / "identity.db"
+        self._identity_store = identity_store or IdentityStore(db_path=default_identity_db_path)
+        self._agent_access_store = agent_access_store or AgentAccessStore(db_path=default_identity_db_path)
+        self._access_policy = access_policy or AccessPolicy(
+            identity_store=self._identity_store,
+            agent_access_store=self._agent_access_store,
+        )
+        if memory_query_service is None:
+            local_memory_db_path = self.data_dir / "database" / "memory.db"
+            self._memory_query_service = MemoryQueryService(
+                identity_store=self._identity_store,
+                access_policy=self._access_policy,
+                memory_service=SQLiteMemoryService(db_path=local_memory_db_path),
+                audit_db_path=local_memory_db_path,
+            )
+        else:
+            self._memory_query_service = memory_query_service
         self._session_agents: dict[str, str] = {}
+        self._session_owners: dict[str, str] = {}
         self._runs: dict[str, RunHandle] = {}
         self._lock = threading.Lock()
         self._sessions_cache: dict[tuple[str, str], _TimedCacheEntry] = {}
         self._messages_cache: dict[tuple[str, str], _TimedCacheEntry] = {}
+
+    def _ensure_requester_principal(self, user_id: str) -> ResolvedPrincipal:
+        """Return a persisted requester principal for client-api operations."""
+        principal_id = str(user_id or "ppx-client-user").strip() or "ppx-client-user"
+        existing = self._identity_store.get_principal(principal_id)
+        if existing is not None:
+            return existing
+        principal = ResolvedPrincipal(
+            principal_id=principal_id,
+            principal_type="human",
+            privilege_level="minimal",
+            account_kind="local_client",
+            display_name=principal_id,
+            authenticated=True,
+            external_subject_id=principal_id,
+            external_display_id=principal_id,
+            metadata={"source": "client_api"},
+        )
+        return self._identity_store.put_principal(principal)
+
+    def _visible_principal_ids(self, requester_principal_id: str, *, agent_id: str, access_kind: str) -> tuple[Any, tuple[str, ...]]:
+        """Resolve the effective visible principal ids for one request."""
+        decision = self._access_policy.decide_agent_scope(
+            requester_principal_id=requester_principal_id,
+            agent_id=agent_id,
+            access_kind=access_kind,
+        )
+        if not decision.allow:
+            return decision, ()
+        visible_principal_ids = decision.resolved_scope(self._identity_store.list_principal_ids())
+        if visible_principal_ids:
+            return decision, visible_principal_ids
+        return decision, (requester_principal_id,)
 
     def _read_cache(self, cache: dict[tuple[str, str], _TimedCacheEntry], key: tuple[str, str]) -> Any | None:
         now_ts = dt.datetime.now().timestamp()
@@ -558,6 +624,20 @@ class ClientApiCoordinator:
 
         return asyncio.run(_load())
 
+    def _read_sessions_worker(self, config_path: Path, *, user_id: str) -> list[dict[str, Any]]:
+        """Read session summaries through the worker fallback path."""
+        response = _run_worker_command(
+            config_path=config_path,
+            args=[
+                "list_sessions",
+                "--config-path",
+                str(config_path),
+                "--user-id",
+                user_id,
+            ],
+        )
+        return [item for item in response.get("sessions", []) if isinstance(item, dict)]
+
     def _create_session_direct(self, config_path: Path, *, user_id: str, session_id: str) -> dict[str, Any]:
         """Create one session directly in the per-agent SQLite store."""
 
@@ -597,6 +677,135 @@ class ClientApiCoordinator:
 
         return asyncio.run(_load())
 
+    def _get_session_worker(self, config_path: Path, *, user_id: str, session_id: str) -> dict[str, Any] | None:
+        """Read one session through the worker fallback path."""
+        response = _run_worker_command(
+            config_path=config_path,
+            args=[
+                "get_session",
+                "--config-path",
+                str(config_path),
+                "--session-id",
+                session_id,
+                "--user-id",
+                user_id,
+            ],
+        )
+        session = response.get("session")
+        return session if isinstance(session, dict) else None
+
+    def _read_sessions_for_principal(self, config_path: Path, *, user_id: str) -> list[dict[str, Any]]:
+        """Read one principal-scoped session list with worker fallback."""
+        try:
+            return self._read_sessions_direct(config_path, user_id=user_id)
+        except Exception as exc:
+            _debug(
+                "client_api.list_sessions.direct_failed",
+                {
+                    "config_path": str(config_path),
+                    "user_id": user_id,
+                    "error": str(exc),
+                },
+            )
+            return self._read_sessions_worker(config_path, user_id=user_id)
+
+    def _get_session_for_principal(
+        self,
+        config_path: Path,
+        *,
+        user_id: str,
+        session_id: str,
+    ) -> dict[str, Any] | None:
+        """Read one principal-scoped session with worker fallback."""
+        try:
+            return self._get_session_direct(config_path, user_id=user_id, session_id=session_id)
+        except Exception as exc:
+            _debug(
+                "client_api.get_session.direct_failed",
+                {
+                    "config_path": str(config_path),
+                    "session_id": session_id,
+                    "user_id": user_id,
+                    "error": str(exc),
+                },
+            )
+            return self._get_session_worker(config_path, user_id=user_id, session_id=session_id)
+
+    def _collect_visible_sessions(
+        self,
+        *,
+        agent_id: str,
+        requester_principal_id: str,
+    ) -> tuple[Any, list[tuple[str, dict[str, Any]]]] | dict[str, Any]:
+        """Collect session rows visible to one requester for one agent."""
+        config_path = agent_config_path(agent_id, self.data_dir)
+        if not config_path.exists():
+            return _error("AGENT_NOT_FOUND", f"Agent '{agent_id}' was not found.")
+        decision, visible_principal_ids = self._visible_principal_ids(
+            requester_principal_id,
+            agent_id=agent_id,
+            access_kind="session_list",
+        )
+        if not decision.allow:
+            return _error(
+                "ACCESS_DENIED",
+                f"Principal '{requester_principal_id}' cannot list sessions for agent '{agent_id}'.",
+                {"reason": decision.reason},
+            )
+
+        rows: list[tuple[str, dict[str, Any]]] = []
+        for subject_principal_id in visible_principal_ids:
+            try:
+                sessions = self._read_sessions_for_principal(config_path, user_id=subject_principal_id)
+            except Exception as exc:
+                return _error("RUNTIME_UNAVAILABLE", str(exc))
+            for session in sessions:
+                rows.append((subject_principal_id, session))
+        return decision, rows
+
+    def _find_session_owner(
+        self,
+        *,
+        session_id: str,
+        requester_principal_id: str,
+    ) -> tuple[str, str] | dict[str, Any]:
+        """Resolve the agent id and owner principal for one visible session."""
+        agent_id = self._session_agents.get(session_id)
+        subject_principal_id = self._session_owners.get(session_id)
+        if agent_id and subject_principal_id:
+            decision = self._access_policy.decide_subject_access(
+                requester_principal_id=requester_principal_id,
+                agent_id=agent_id,
+                subject_principal_id=subject_principal_id,
+                access_kind="session_read",
+            )
+            if decision.allow:
+                return agent_id, subject_principal_id
+            return _error(
+                "ACCESS_DENIED",
+                f"Principal '{requester_principal_id}' cannot read session '{session_id}'.",
+                {"reason": decision.reason},
+            )
+
+        for candidate in list_enabled_agent_names(self.data_dir):
+            visible = self._collect_visible_sessions(
+                agent_id=candidate,
+                requester_principal_id=requester_principal_id,
+            )
+            if isinstance(visible, dict):
+                if visible.get("error", {}).get("code") == "ACCESS_DENIED":
+                    continue
+                return visible
+            _decision, rows = visible
+            for owner_principal_id, session in rows:
+                candidate_session_id = str(session.get("id") or "")
+                if candidate_session_id != session_id:
+                    continue
+                self._session_agents[session_id] = candidate
+                self._session_owners[session_id] = owner_principal_id
+                return candidate, owner_principal_id
+        return _error("SESSION_NOT_FOUND", f"Session '{session_id}' was not found.")
+
     def health(self) -> dict[str, Any]:
         """Return a lightweight health payload."""
 
@@ -635,38 +844,36 @@ class ClientApiCoordinator:
     def list_sessions(self, agent_id: str, *, user_id: str = "ppx-client-user") -> dict[str, Any]:
         """Return projected session summaries for one agent."""
 
+        requester = self._ensure_requester_principal(user_id)
         config_path = agent_config_path(agent_id, self.data_dir)
         if not config_path.exists():
             return _error("AGENT_NOT_FOUND", f"Agent '{agent_id}' was not found.")
-        cache_key = (agent_id, user_id)
+        cache_key = (agent_id, requester.principal_id)
         cached = self._read_cache(self._sessions_cache, cache_key)
         if cached is not None:
-            _debug("client_api.list_sessions.cache_hit", {"agent_id": agent_id, "user_id": user_id, "count": len(cached)})
-            return _ok({"items": cached})
-        try:
-            sessions = self._read_sessions_direct(config_path, user_id=user_id)
-        except Exception as exc:
             _debug(
-                "client_api.list_sessions.direct_failed",
+                "client_api.list_sessions.cache_hit",
                 {
                     "agent_id": agent_id,
-                    "error": str(exc),
+                    "user_id": requester.principal_id,
+                    "count": len(cached),
                 },
             )
-            try:
-                response = _run_worker_command(
-                    config_path=config_path,
-                    args=["list_sessions", "--config-path", str(config_path)],
-                )
-                sessions = [item for item in response.get("sessions", []) if isinstance(item, dict)]
-            except Exception as fallback_exc:
-                return _error("RUNTIME_UNAVAILABLE", str(fallback_exc))
+            return _ok({"items": cached})
+        visible = self._collect_visible_sessions(
+            agent_id=agent_id,
+            requester_principal_id=requester.principal_id,
+        )
+        if isinstance(visible, dict):
+            return visible
+        _decision, session_rows = visible
         items = []
-        for session in sessions:
+        for subject_principal_id, session in session_rows:
             session_id = str(session.get("id") or "")
             if not session_id:
                 continue
             self._session_agents[session_id] = agent_id
+            self._session_owners[session_id] = subject_principal_id
             updated_raw = session.get("last_update_time")
             if isinstance(updated_raw, (int, float)):
                 updated_at = dt.datetime.fromtimestamp(updated_raw, tz=dt.timezone.utc).astimezone().isoformat()
@@ -676,6 +883,7 @@ class ClientApiCoordinator:
                 {
                     "id": session_id,
                     "agent_id": agent_id,
+                    "subject_principal_id": subject_principal_id,
                     "title": f"Session {session_id[:8]}",
                     "updated_at": updated_at,
                     "last_message_preview": str(session.get("last_preview") or "Openpipixia session"),
@@ -689,12 +897,17 @@ class ClientApiCoordinator:
     def create_session(self, agent_id: str, *, user_id: str = "ppx-client-user") -> dict[str, Any]:
         """Create one session for the target agent."""
 
+        requester = self._ensure_requester_principal(user_id)
         config_path = agent_config_path(agent_id, self.data_dir)
         if not config_path.exists():
             return _error("AGENT_NOT_FOUND", f"Agent '{agent_id}' was not found.")
         session_id = f"{agent_id}-{os.urandom(8).hex()}"
         try:
-            session = self._create_session_direct(config_path, user_id=user_id, session_id=session_id)
+            session = self._create_session_direct(
+                config_path,
+                user_id=requester.principal_id,
+                session_id=session_id,
+            )
         except Exception as exc:
             _debug(
                 "client_api.create_session.direct_failed",
@@ -714,7 +927,7 @@ class ClientApiCoordinator:
                         "--session-id",
                         session_id,
                         "--user-id",
-                        user_id,
+                        requester.principal_id,
                     ],
                 )
                 session = response.get("session") if isinstance(response.get("session"), dict) else {}
@@ -722,8 +935,9 @@ class ClientApiCoordinator:
                 return _error("RUNTIME_UNAVAILABLE", str(fallback_exc))
         session_id = str(session.get("id") or session_id)
         self._session_agents[session_id] = agent_id
-        self._invalidate_agent_cache(agent_id, user_id=user_id)
-        self._invalidate_session_cache(session_id, user_id=user_id)
+        self._session_owners[session_id] = requester.principal_id
+        self._invalidate_agent_cache(agent_id, user_id=requester.principal_id)
+        self._invalidate_session_cache(session_id, user_id=requester.principal_id)
         updated_raw = session.get("last_update_time")
         if isinstance(updated_raw, (int, float)):
             updated_at = dt.datetime.fromtimestamp(updated_raw, tz=dt.timezone.utc).astimezone().isoformat()
@@ -734,6 +948,7 @@ class ClientApiCoordinator:
                 "session": {
                     "id": session_id,
                     "agent_id": agent_id,
+                    "subject_principal_id": requester.principal_id,
                     "title": "New local session",
                     "updated_at": updated_at,
                     "last_message_preview": "Start a task for this agent.",
@@ -745,44 +960,35 @@ class ClientApiCoordinator:
     def get_session_messages(self, session_id: str, *, user_id: str = "ppx-client-user") -> dict[str, Any]:
         """Return projected message history for one session."""
 
-        cache_key = (session_id, user_id)
+        requester = self._ensure_requester_principal(user_id)
+        cache_key = (session_id, requester.principal_id)
         cached = self._read_cache(self._messages_cache, cache_key)
         if cached is not None:
-            _debug("client_api.get_session.cache_hit", {"session_id": session_id, "user_id": user_id, "count": len(cached)})
-            return _ok({"items": cached})
-        agent_id = self._session_agents.get(session_id)
-        if not agent_id:
-            for candidate in list_enabled_agent_names(self.data_dir):
-                sessions = self.list_sessions(candidate, user_id=user_id)
-                if not sessions.get("ok"):
-                    continue
-                items = sessions["data"].get("items", [])
-                if any(item.get("id") == session_id for item in items):
-                    agent_id = candidate
-                    self._session_agents[session_id] = candidate
-                    break
-        if not agent_id:
-            return _error("SESSION_NOT_FOUND", f"Session '{session_id}' was not found.")
-        config_path = agent_config_path(agent_id, self.data_dir)
-        try:
-            session = self._get_session_direct(config_path, user_id=user_id, session_id=session_id)
-        except Exception as exc:
             _debug(
-                "client_api.get_session.direct_failed",
+                "client_api.get_session.cache_hit",
                 {
-                    "agent_id": agent_id,
                     "session_id": session_id,
-                    "error": str(exc),
+                    "user_id": requester.principal_id,
+                    "count": len(cached),
                 },
             )
-            try:
-                response = _run_worker_command(
-                    config_path=config_path,
-                    args=["get_session", "--config-path", str(config_path), "--session-id", session_id, "--user-id", user_id],
-                )
-                session = response.get("session") if isinstance(response.get("session"), dict) else None
-            except Exception as fallback_exc:
-                return _error("RUNTIME_UNAVAILABLE", str(fallback_exc))
+            return _ok({"items": cached})
+        location = self._find_session_owner(
+            session_id=session_id,
+            requester_principal_id=requester.principal_id,
+        )
+        if isinstance(location, dict):
+            return location
+        agent_id, subject_principal_id = location
+        config_path = agent_config_path(agent_id, self.data_dir)
+        try:
+            session = self._get_session_for_principal(
+                config_path,
+                user_id=subject_principal_id,
+                session_id=session_id,
+            )
+        except Exception as exc:
+            return _error("RUNTIME_UNAVAILABLE", str(exc))
         if session is None:
             return _error("SESSION_NOT_FOUND", f"Session '{session_id}' was not found.")
         events = session.get("events") if isinstance(session.get("events"), list) else []
@@ -793,15 +999,40 @@ class ClientApiCoordinator:
             for message in [project_session_event(event, session_id)]
             if message is not None
         ]
+        for message in messages:
+            metadata = message.setdefault("metadata", {})
+            metadata["subject_principal_id"] = subject_principal_id
         self._write_cache(self._messages_cache, cache_key, messages)
         return _ok({"items": messages})
 
     def create_run(self, agent_id: str, session_id: str, text: str, *, user_id: str = "ppx-client-user") -> dict[str, Any]:
         """Create one streaming run and start consuming worker events in background."""
 
+        requester = self._ensure_requester_principal(user_id)
         config_path = agent_config_path(agent_id, self.data_dir)
         if not config_path.exists():
             return _error("AGENT_NOT_FOUND", f"Agent '{agent_id}' was not found.")
+        location = self._find_session_owner(
+            session_id=session_id,
+            requester_principal_id=requester.principal_id,
+        )
+        if isinstance(location, dict):
+            error_code = location.get("error", {}).get("code")
+            if error_code == "SESSION_NOT_FOUND":
+                located_agent_id = agent_id
+                subject_principal_id = requester.principal_id
+            else:
+                return location
+        else:
+            located_agent_id, subject_principal_id = location
+            if located_agent_id != agent_id:
+                return _error("SESSION_NOT_FOUND", f"Session '{session_id}' was not found for agent '{agent_id}'.")
+            if subject_principal_id != requester.principal_id:
+                return _error(
+                    "ACCESS_DENIED",
+                    f"Principal '{requester.principal_id}' cannot start a run in session '{session_id}'.",
+                    {"reason": "run_requires_session_owner"},
+                )
         run_id = f"run_{os.urandom(8).hex()}"
         cmd = [
             sys.executable,
@@ -815,7 +1046,7 @@ class ClientApiCoordinator:
             "--message",
             text,
             "--user-id",
-            user_id,
+            requester.principal_id,
         ]
         process = subprocess.Popen(
             cmd,
@@ -829,15 +1060,16 @@ class ClientApiCoordinator:
         with self._lock:
             self._runs[run_id] = handle
         self._session_agents[session_id] = agent_id
-        self._invalidate_agent_cache(agent_id, user_id=user_id)
-        self._invalidate_session_cache(session_id, user_id=user_id)
+        self._session_owners[session_id] = requester.principal_id
+        self._invalidate_agent_cache(agent_id, user_id=requester.principal_id)
+        self._invalidate_session_cache(session_id, user_id=requester.principal_id)
         _debug(
             "client_api.create_run",
             {
                 "run_id": run_id,
                 "agent_id": agent_id,
                 "session_id": session_id,
-                "user_id": user_id,
+                "user_id": requester.principal_id,
                 "text_preview": text[:240] + ("..." if len(text) > 240 else ""),
                 "worker_cmd": cmd,
             },
@@ -888,6 +1120,41 @@ class ClientApiCoordinator:
                     "status": "running",
                     "events_url": f"/api/v1/runs/{run_id}/events",
                 }
+            }
+        )
+
+    def search_memory(self, agent_id: str, query: str, *, user_id: str = "ppx-client-user") -> dict[str, Any]:
+        """Run one explicit memory query through the access-controlled query layer."""
+        requester = self._ensure_requester_principal(user_id)
+        try:
+            result = asyncio.run(
+                self._memory_query_service.search(
+                    agent_id=agent_id,
+                    requester_principal_id=requester.principal_id,
+                    query=query,
+                )
+            )
+        except Exception as exc:
+            return _error("RUNTIME_UNAVAILABLE", str(exc))
+        if not result.decision.allow:
+            return _error(
+                "ACCESS_DENIED",
+                f"Principal '{requester.principal_id}' cannot query memory for agent '{agent_id}'.",
+                {"reason": result.decision.reason},
+            )
+        return _ok(
+            {
+                "items": [
+                    {
+                        "id": memory.id,
+                        "author": memory.author,
+                        "timestamp": memory.timestamp,
+                        "text": memory_entry_text(memory),
+                        "subject_principal_id": memory.custom_metadata.get("subject_principal_id"),
+                        "metadata": dict(memory.custom_metadata),
+                    }
+                    for memory in result.memories
+                ]
             }
         )
 
@@ -1191,10 +1458,22 @@ class _ClientApiHandler(BaseHTTPRequestHandler):
             self._send_json(200, self.coordinator.runtime_status())
             return
         if len(segments) == 5 and segments[:3] == ["api", "v1", "agents"] and segments[4] == "sessions":
-            self._send_json(200, self.coordinator.list_sessions(segments[3]))
+            user_id = str(query.get("user_id") or "ppx-client-user")
+            payload = self.coordinator.list_sessions(segments[3], user_id=user_id)
+            self._send_json(200 if payload.get("ok") else 404, payload)
             return
         if len(segments) == 5 and segments[:3] == ["api", "v1", "sessions"] and segments[4] == "messages":
-            payload = self.coordinator.get_session_messages(segments[3])
+            user_id = str(query.get("user_id") or "ppx-client-user")
+            payload = self.coordinator.get_session_messages(segments[3], user_id=user_id)
+            self._send_json(200 if payload.get("ok") else 404, payload)
+            return
+        if len(segments) == 6 and segments[:3] == ["api", "v1", "agents"] and segments[4] == "memory" and segments[5] == "search":
+            query_text = str(query.get("q") or "").strip()
+            user_id = str(query.get("user_id") or "ppx-client-user")
+            if not query_text:
+                self._send_json(400, _error("INVALID_REQUEST", "Query parameter 'q' is required."))
+                return
+            payload = self.coordinator.search_memory(segments[3], query_text, user_id=user_id)
             self._send_json(200 if payload.get("ok") else 404, payload)
             return
         if len(segments) == 5 and segments[:3] == ["api", "v1", "runs"] and segments[4] == "events":
@@ -1223,7 +1502,8 @@ class _ClientApiHandler(BaseHTTPRequestHandler):
         path, segments, _query = self._parse()
         body = self._read_json_body()
         if len(segments) == 5 and segments[:3] == ["api", "v1", "agents"] and segments[4] == "sessions":
-            payload = self.coordinator.create_session(segments[3])
+            user_id = str(body.get("user_id") or "ppx-client-user")
+            payload = self.coordinator.create_session(segments[3], user_id=user_id)
             self._send_json(200 if payload.get("ok") else 404, payload)
             return
         if len(segments) == 7 and segments[:3] == ["api", "v1", "agents"] and segments[4] == "sessions" and segments[6] == "runs":

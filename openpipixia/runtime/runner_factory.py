@@ -6,8 +6,10 @@ import os
 from typing import Any
 
 from google.adk.apps.app import App, EventsCompactionConfig, ResumabilityConfig
+from google.adk.plugins.save_files_as_artifacts_plugin import SaveFilesAsArtifactsPlugin
 from google.adk.runners import Runner
 
+from .artifact_service import create_artifact_service
 from .memory_service import create_memory_service
 from .session_service import create_session_service
 from .step_events import OpenPpxStepEventPlugin
@@ -94,6 +96,7 @@ def create_runner(
     app_name: str,
     session_service: Any | None = None,
     memory_service: Any | None = None,
+    artifact_service: Any | None = None,
 ) -> tuple[Runner, Any]:
     """Create a runner with a shared session service contract.
 
@@ -106,16 +109,21 @@ def create_runner(
     """
     service = session_service or create_session_service()
     memory = memory_service if memory_service is not None else create_memory_service()
+    artifacts = artifact_service if artifact_service is not None else create_artifact_service()
     app = App(
         name=app_name,
         root_agent=agent,
         resumability_config=ResumabilityConfig(is_resumable=True),
         events_compaction_config=_build_events_compaction_config(),
-        plugins=[OpenPpxStepEventPlugin()],
+        plugins=[
+            OpenPpxStepEventPlugin(),
+            SaveFilesAsArtifactsPlugin(),
+        ],
     )
     runner = Runner(
         app=app,
         app_name=app_name,
+        artifact_service=artifacts,
         session_service=service,
         memory_service=memory,
         auto_create_session=True,

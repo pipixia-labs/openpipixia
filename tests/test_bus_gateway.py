@@ -24,6 +24,9 @@ from openpipixia.runtime.heartbeat_status_store import read_heartbeat_status_sna
 from openpipixia.runtime.heartbeat_utils import DEFAULT_HEARTBEAT_PROMPT
 from openpipixia.tooling.registry import SubagentSpawnRequest
 
+_LOCAL_PRINCIPAL_ID = "human:local:u1"
+_LOCAL_SESSION_ID = "openpipixia:local:c1:human:local:u1"
+
 
 class MessageBusTests(unittest.IsolatedAsyncioTestCase):
     async def test_roundtrip(self) -> None:
@@ -77,11 +80,48 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(outbound.channel, "local")
         self.assertEqual(outbound.chat_id, "c1")
         self.assertEqual(outbound.content, "gateway answer")
+        self.assertEqual(captured["user_id"], _LOCAL_PRINCIPAL_ID)
+        self.assertEqual(captured["session_id"], _LOCAL_SESSION_ID)
+        self.assertIn("temp:_openppx:ctx", captured["state_delta"])
+        self.assertEqual(captured["state_delta"]["temp:_openppx:ingest_offset"], 0)
         request = captured["new_message"]
         text = request.parts[0].text
         self.assertIn("Current request time: 2026-02-18T09:30:00+00:00 (UTC)", text)
         self.assertIn("Use this as the reference 'now' for relative time expressions", text)
         self.assertIn("\n\nhello", text)
+
+    def test_process_message_includes_media_parts(self) -> None:
+        fake_event = pytypes.SimpleNamespace(
+            content=pytypes.SimpleNamespace(parts=[pytypes.SimpleNamespace(text="ok")])
+        )
+        captured: dict[str, object] = {}
+
+        class _FakeRunner:
+            async def run_async(self, **kwargs):
+                captured.update(kwargs)
+                yield fake_event
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            media_path = Path(tmpdir) / "sample.txt"
+            media_path.write_text("hello from file", encoding="utf-8")
+            fake_agent = pytypes.SimpleNamespace(name="openpipixia")
+            with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+                gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+                inbound = InboundMessage(
+                    channel="local",
+                    sender_id="u1",
+                    chat_id="c1",
+                    content="hello",
+                    media=[str(media_path)],
+                )
+                outbound = asyncio.run(gateway.process_message(inbound))
+
+        self.assertEqual(outbound.content, "ok")
+        request = captured["new_message"]
+        self.assertEqual(len(request.parts), 2)
+        self.assertEqual(request.parts[1].inline_data.display_name, "sample.txt")
+        self.assertEqual(request.parts[1].inline_data.mime_type, "text/plain")
+        self.assertEqual(request.parts[1].inline_data.data, b"hello from file")
 
     def test_process_message_merges_stream_snapshots(self) -> None:
         fake_event_1 = pytypes.SimpleNamespace(
@@ -247,10 +287,10 @@ class GatewayTests(unittest.TestCase):
             self.assertEqual(second_outbound.content, "ok")
 
         self.assertEqual(len(captured_calls), 2)
-        self.assertEqual(captured_calls[0]["session_id"], "local:c1")
+        self.assertEqual(captured_calls[0]["session_id"], _LOCAL_SESSION_ID)
         rotated_session_id = captured_calls[1]["session_id"]
-        self.assertNotEqual(rotated_session_id, "local:c1")
-        self.assertTrue(str(rotated_session_id).startswith("local:c1:new:"))
+        self.assertNotEqual(rotated_session_id, _LOCAL_SESSION_ID)
+        self.assertTrue(str(rotated_session_id).startswith(f"{_LOCAL_SESSION_ID}:new:"))
 
     def test_process_message_new_command_persists_current_session_to_memory(self) -> None:
         fake_event = pytypes.SimpleNamespace(
@@ -283,8 +323,8 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(outbound.content, "Started a new conversation session.")
         session_service.get_session.assert_awaited_once_with(
             app_name="openpipixia",
-            user_id="u1",
-            session_id="local:c1",
+            user_id=_LOCAL_PRINCIPAL_ID,
+            session_id=_LOCAL_SESSION_ID,
         )
         memory_service.add_session_to_memory.assert_awaited_once_with(fake_session)
 

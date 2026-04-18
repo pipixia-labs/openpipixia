@@ -10,18 +10,36 @@ from importlib import import_module
 from typing import Any
 
 __all__ = [
+    "AccessPolicy",
+    "AgentAccessStore",
+    "ArtifactConfig",
+    "MemoryQueryService",
     "MemoryConfig",
     "SessionConfig",
+    "create_agent_access_store",
+    "create_artifact_service",
     "create_memory_service",
     "create_runner",
     "create_session_service",
     "extract_text",
+    "create_identity_store",
+    "load_artifact_config",
+    "load_agent_access_store_config",
     "load_memory_config",
     "load_session_config",
 ]
 
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "AccessPolicy": ("openpipixia.runtime.access_policy", "AccessPolicy"),
+    "AgentAccessStore": ("openpipixia.runtime.agent_access_store", "AgentAccessStore"),
     "extract_text": ("openpipixia.runtime.adk_utils", "extract_text"),
+    "ArtifactConfig": ("openpipixia.runtime.artifact_service", "ArtifactConfig"),
+    "create_agent_access_store": ("openpipixia.runtime.agent_access_store", "create_agent_access_store"),
+    "create_artifact_service": ("openpipixia.runtime.artifact_service", "create_artifact_service"),
+    "create_identity_store": ("openpipixia.runtime.identity_store", "create_identity_store"),
+    "load_artifact_config": ("openpipixia.runtime.artifact_service", "load_artifact_config"),
+    "load_agent_access_store_config": ("openpipixia.runtime.agent_access_store", "load_agent_access_store_config"),
+    "MemoryQueryService": ("openpipixia.runtime.memory_query_service", "MemoryQueryService"),
     "MemoryConfig": ("openpipixia.runtime.memory_service", "MemoryConfig"),
     "create_memory_service": ("openpipixia.runtime.memory_service", "create_memory_service"),
     "load_memory_config": ("openpipixia.runtime.memory_service", "load_memory_config"),

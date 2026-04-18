@@ -8,6 +8,7 @@ from typing import Any
 
 from google.adk.agents import LlmAgent
 from google.adk.tools import LongRunningFunctionTool
+from google.adk.tools import load_artifacts
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 
 from ..core.config import normalize_agent_privilege_level
@@ -16,6 +17,10 @@ from ..core.gui_mcp import resolve_gui_mcp_from_env
 from ..core.mcp_registry import build_mcp_toolsets_from_env
 from ..core.provider import build_adk_model_from_env
 from ..runtime.debug_callbacks import after_model_debug_callback, before_model_debug_callback
+from ..runtime.interaction_context import (
+    INTERACTION_CONTEXT_STATE_KEY,
+    MEMORY_INGEST_OFFSET_STATE_KEY,
+)
 from ..runtime.workspace_bootstrap import before_model_workspace_bootstrap_callback
 from ..tooling.skills_adapter import get_registry, list_skills, read_skill
 from ..tooling.registry import (
@@ -42,15 +47,56 @@ from ..tooling.registry import (
 _GUI_BUILTIN_TOOLS_ENABLED_ENV = "OPENPPX_GUI_BUILTIN_TOOLS_ENABLED"
 
 
-async def _after_agent_memory_callback(callback_context: Any) -> None:
-    """Persist session history into ADK memory when memory service is configured.
+async def _before_agent_memory_callback(callback_context: Any) -> None:
+    """Store an ingest offset fallback when gateway did not provide one.
 
-    This callback is intentionally tolerant: if memory service is not configured,
-    ADK raises ``ValueError`` and we skip persistence so the main interaction
-    path is never blocked.
+    Gateway-driven invocations inject a pre-run offset so memory ingest includes
+    the current user message. This callback only acts as a fallback for runtime
+    paths that resume or spawn agents without that gateway-managed state.
     """
+    state = getattr(callback_context, "state", None)
+    session = getattr(callback_context, "session", None)
+    if state is None or session is None:
+        return
+    if state.get(MEMORY_INGEST_OFFSET_STATE_KEY) is not None:
+        return
+    state[MEMORY_INGEST_OFFSET_STATE_KEY] = len(getattr(session, "events", []) or [])
+
+
+async def _after_agent_memory_callback(callback_context: Any) -> None:
+    """Persist new invocation events into ADK memory when memory is configured.
+
+    The callback consumes the invocation-scoped ingest offset written by gateway
+    (or the fallback written in ``_before_agent_memory_callback``), then forwards
+    only the new events to ``add_events_to_memory``.
+    """
+    state = getattr(callback_context, "state", None)
+    session = getattr(callback_context, "session", None)
+    if state is None or session is None:
+        return
+
+    interaction_context = state.get(INTERACTION_CONTEXT_STATE_KEY) or {}
+    if isinstance(interaction_context, dict) and not interaction_context.get("memory_ingest_enabled", True):
+        return
+
+    raw_offset = state.get(MEMORY_INGEST_OFFSET_STATE_KEY, 0)
     try:
-        await callback_context.add_session_to_memory()
+        offset = max(0, int(raw_offset))
+    except (TypeError, ValueError):
+        offset = 0
+    events = list(getattr(session, "events", []) or [])
+    delta_events = events[offset:]
+    if not delta_events:
+        return
+
+    custom_metadata: dict[str, Any] = {"ingest_reason": "after_agent_callback"}
+    if isinstance(interaction_context, dict):
+        custom_metadata.update(interaction_context)
+    try:
+        await callback_context.add_events_to_memory(
+            events=delta_events,
+            custom_metadata=custom_metadata,
+        )
     except ValueError:
         return
 
@@ -138,6 +184,7 @@ def _build_tools() -> list[Any]:
     """Assemble builtin tools plus optional MCP toolsets from env config."""
     base_tools: list[Any] = [
         PreloadMemoryTool(),
+        load_artifacts,
         list_skills,
         read_skill,
         read_file,
@@ -170,6 +217,7 @@ def _build_tools() -> list[Any]:
             "list_dir",
             "glob",
             "grep",
+            "load_artifacts",
         }
         tools = [tool for tool in base_tools if _tool_name(tool) in allowed_names or isinstance(tool, PreloadMemoryTool)]
         return tools
@@ -189,6 +237,7 @@ root_agent = LlmAgent(
     name="openpipixia",
     model=build_adk_model_from_env(),
     instruction=_build_instruction(),
+    before_agent_callback=_before_agent_memory_callback,
     after_agent_callback=_after_agent_memory_callback,
     before_model_callback=[
         before_model_workspace_bootstrap_callback,

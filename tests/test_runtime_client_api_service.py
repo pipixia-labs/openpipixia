@@ -1,20 +1,28 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import time
 from pathlib import Path
 
 from google.adk.events.event import Event
+from google.adk.memory.memory_entry import MemoryEntry
 from google.genai import types
 
+from openpipixia.runtime.access_policy import AccessPolicy
+from openpipixia.runtime.agent_access_store import AgentAccessStore, AgentMembership
 from openpipixia.runtime.client_api_service import (
     ClientApiCoordinator,
     build_agent_profile,
     list_enabled_agent_names,
     project_session_event,
 )
+from openpipixia.runtime.identity_models import ResolvedPrincipal
+from openpipixia.runtime.identity_store import IdentityStore
+from openpipixia.runtime.memory_query_service import MemoryQueryService
 from openpipixia.runtime.session_service import SessionConfig, create_session_service
+from openpipixia.runtime.sqlite_memory_service import SQLiteMemoryService
 
 
 class _FakeProcess:
@@ -58,6 +66,26 @@ class _PendingProcess:
     def wait(self) -> int:
         self.terminated = True
         return 0
+
+
+def _principal(*, principal_id: str, privilege_level: str = "minimal") -> ResolvedPrincipal:
+    return ResolvedPrincipal(
+        principal_id=principal_id,
+        principal_type="human",
+        privilege_level=privilege_level,
+        account_kind="local",
+        display_name=principal_id,
+        authenticated=True,
+    )
+
+
+def _memory(text: str, *, timestamp: str) -> MemoryEntry:
+    return MemoryEntry(
+        id=f"mem-{abs(hash((text, timestamp)))}",
+        author="user",
+        timestamp=timestamp,
+        content=types.Content(role="user", parts=[types.Part.from_text(text=text)]),
+    )
 
 
 def test_list_enabled_agent_names_reads_global_config(tmp_path: Path) -> None:
@@ -462,3 +490,174 @@ def test_create_session_invalidates_session_list_cache(tmp_path: Path, monkeypat
     assert created["ok"] is True
     assert after["data"]["items"][0]["id"] == "session-2"
     assert calls["count"] == 2
+
+
+def test_client_api_owner_can_list_participant_sessions(tmp_path: Path) -> None:
+    (tmp_path / "global_config.json").write_text(
+        json.dumps({"agents": [{"name": "writer", "enabled": True}]}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / "writer"
+    agent_dir.mkdir()
+    (agent_dir / "database").mkdir()
+    (agent_dir / "config.json").write_text(json.dumps({"agent": {"workspace": "workspace/writer"}}), encoding="utf-8")
+
+    db_path = tmp_path / "identity.db"
+    memory_db_path = tmp_path / "memory.db"
+    identity_store = IdentityStore(db_path=db_path)
+    access_store = AgentAccessStore(db_path=db_path)
+    owner = identity_store.put_principal(_principal(principal_id="owner"))
+    participant = identity_store.put_principal(_principal(principal_id="participant"))
+    access_store.set_agent_owner(agent_id="writer", owner_principal_id=owner.principal_id)
+    access_store.upsert_membership(
+        AgentMembership(agent_id="writer", principal_id=participant.principal_id, relation="participant")
+    )
+    policy = AccessPolicy(identity_store=identity_store, agent_access_store=access_store)
+    query_service = MemoryQueryService(
+        identity_store=identity_store,
+        access_policy=policy,
+        memory_service=SQLiteMemoryService(db_path=memory_db_path),
+        audit_db_path=memory_db_path,
+    )
+
+    async def _seed() -> None:
+        service = create_session_service(
+            SessionConfig(db_url=f"sqlite+aiosqlite:///{agent_dir / 'database' / 'sessions.db'}")
+        )
+        async with service:
+            session = await service.create_session(
+                app_name="openpipixia",
+                user_id=participant.principal_id,
+                session_id="participant-session",
+            )
+            await service.append_event(
+                session=session,
+                event=Event(
+                    invocation_id="inv-participant",
+                    author="assistant",
+                    content=types.Content(role="model", parts=[types.Part.from_text(text="Participant history")]),
+                ),
+            )
+
+    import asyncio
+
+    asyncio.run(_seed())
+
+    coordinator = ClientApiCoordinator(
+        data_dir=tmp_path,
+        identity_store=identity_store,
+        agent_access_store=access_store,
+        access_policy=policy,
+        memory_query_service=query_service,
+    )
+    sessions = coordinator.list_sessions("writer", user_id=owner.principal_id)
+
+    assert sessions["ok"] is True
+    assert sessions["data"]["items"][0]["id"] == "participant-session"
+    assert sessions["data"]["items"][0]["subject_principal_id"] == participant.principal_id
+
+
+def test_client_api_owner_cannot_run_in_participant_session(tmp_path: Path) -> None:
+    (tmp_path / "global_config.json").write_text(
+        json.dumps({"agents": [{"name": "writer", "enabled": True}]}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / "writer"
+    agent_dir.mkdir()
+    (agent_dir / "database").mkdir()
+    (agent_dir / "config.json").write_text(json.dumps({"agent": {"workspace": "workspace/writer"}}), encoding="utf-8")
+
+    db_path = tmp_path / "identity.db"
+    memory_db_path = tmp_path / "memory.db"
+    identity_store = IdentityStore(db_path=db_path)
+    access_store = AgentAccessStore(db_path=db_path)
+    owner = identity_store.put_principal(_principal(principal_id="owner"))
+    participant = identity_store.put_principal(_principal(principal_id="participant"))
+    access_store.set_agent_owner(agent_id="writer", owner_principal_id=owner.principal_id)
+    access_store.upsert_membership(
+        AgentMembership(agent_id="writer", principal_id=participant.principal_id, relation="participant")
+    )
+    policy = AccessPolicy(identity_store=identity_store, agent_access_store=access_store)
+    query_service = MemoryQueryService(
+        identity_store=identity_store,
+        access_policy=policy,
+        memory_service=SQLiteMemoryService(db_path=memory_db_path),
+        audit_db_path=memory_db_path,
+    )
+
+    async def _seed() -> None:
+        service = create_session_service(
+            SessionConfig(db_url=f"sqlite+aiosqlite:///{agent_dir / 'database' / 'sessions.db'}")
+        )
+        async with service:
+            await service.create_session(
+                app_name="openpipixia",
+                user_id=participant.principal_id,
+                session_id="participant-session",
+            )
+
+    import asyncio
+
+    asyncio.run(_seed())
+
+    coordinator = ClientApiCoordinator(
+        data_dir=tmp_path,
+        identity_store=identity_store,
+        agent_access_store=access_store,
+        access_policy=policy,
+        memory_query_service=query_service,
+    )
+    payload = coordinator.create_run("writer", "participant-session", "hello", user_id=owner.principal_id)
+
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "ACCESS_DENIED"
+    assert payload["error"]["details"]["reason"] == "run_requires_session_owner"
+
+
+def test_client_api_owner_can_query_participant_memory(tmp_path: Path) -> None:
+    (tmp_path / "global_config.json").write_text(
+        json.dumps({"agents": [{"name": "writer", "enabled": True}]}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / "writer"
+    agent_dir.mkdir()
+    (agent_dir / "config.json").write_text(json.dumps({"agent": {"workspace": "workspace/writer"}}), encoding="utf-8")
+
+    db_path = tmp_path / "identity.db"
+    memory_db_path = tmp_path / "memory.db"
+    identity_store = IdentityStore(db_path=db_path)
+    access_store = AgentAccessStore(db_path=db_path)
+    owner = identity_store.put_principal(_principal(principal_id="owner"))
+    participant = identity_store.put_principal(_principal(principal_id="participant"))
+    access_store.set_agent_owner(agent_id="writer", owner_principal_id=owner.principal_id)
+    access_store.upsert_membership(
+        AgentMembership(agent_id="writer", principal_id=participant.principal_id, relation="participant")
+    )
+    policy = AccessPolicy(identity_store=identity_store, agent_access_store=access_store)
+    memory_service = SQLiteMemoryService(db_path=memory_db_path)
+    asyncio.run(
+        memory_service.add_memory(
+            app_name="openpipixia",
+            user_id=participant.principal_id,
+            memories=[_memory("remember the launch checklist", timestamp="2026-04-18T10:00:00+08:00")],
+        )
+    )
+    query_service = MemoryQueryService(
+        identity_store=identity_store,
+        access_policy=policy,
+        memory_service=memory_service,
+        audit_db_path=memory_db_path,
+    )
+
+    coordinator = ClientApiCoordinator(
+        data_dir=tmp_path,
+        identity_store=identity_store,
+        agent_access_store=access_store,
+        access_policy=policy,
+        memory_query_service=query_service,
+    )
+    payload = coordinator.search_memory("writer", "launch", user_id=owner.principal_id)
+
+    assert payload["ok"] is True
+    assert payload["data"]["items"][0]["subject_principal_id"] == participant.principal_id
+    assert "launch checklist" in payload["data"]["items"][0]["text"]

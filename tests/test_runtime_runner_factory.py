@@ -6,6 +6,8 @@ import os
 import unittest
 from unittest.mock import patch
 
+from google.adk.plugins.save_files_as_artifacts_plugin import SaveFilesAsArtifactsPlugin
+
 from openpipixia.runtime.runner_factory import (
     _build_events_compaction_config,
     create_runner,
@@ -56,31 +58,35 @@ class RunnerFactoryTests(unittest.TestCase):
 
     def test_create_runner_wires_memory_service_and_compaction(self) -> None:
         sentinel_memory = object()
+        sentinel_artifacts = object()
         sentinel_session_service = object()
         sentinel_runner = object()
         fake_agent = object()
         sentinel_app = object()
 
         with patch("openpipixia.runtime.runner_factory.create_memory_service", return_value=sentinel_memory):
-            with patch("openpipixia.runtime.runner_factory.App", return_value=sentinel_app) as mocked_app:
-                with patch("openpipixia.runtime.runner_factory.Runner", return_value=sentinel_runner) as mocked:
-                    runner, session_service = create_runner(
-                        agent=fake_agent,
-                        app_name="openpipixia_test",
-                        session_service=sentinel_session_service,
-                    )
+            with patch("openpipixia.runtime.runner_factory.create_artifact_service", return_value=sentinel_artifacts):
+                with patch("openpipixia.runtime.runner_factory.App", return_value=sentinel_app) as mocked_app:
+                    with patch("openpipixia.runtime.runner_factory.Runner", return_value=sentinel_runner) as mocked:
+                        runner, session_service = create_runner(
+                            agent=fake_agent,
+                            app_name="openpipixia_test",
+                            session_service=sentinel_session_service,
+                        )
 
         self.assertIs(runner, sentinel_runner)
         self.assertIs(session_service, sentinel_session_service)
         mocked_app.assert_called_once()
         self.assertEqual(mocked.call_count, 1)
         kwargs = mocked.call_args.kwargs
+        self.assertIs(kwargs["artifact_service"], sentinel_artifacts)
         self.assertIs(kwargs["memory_service"], sentinel_memory)
         self.assertIs(kwargs["session_service"], sentinel_session_service)
         self.assertIs(kwargs["app"], sentinel_app)
         app_kwargs = mocked_app.call_args.kwargs
-        self.assertEqual(len(app_kwargs["plugins"]), 1)
+        self.assertEqual(len(app_kwargs["plugins"]), 2)
         self.assertIsInstance(app_kwargs["plugins"][0], OpenPpxStepEventPlugin)
+        self.assertIsInstance(app_kwargs["plugins"][1], SaveFilesAsArtifactsPlugin)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import mimetypes
 import os
 import uuid
 from pathlib import Path
@@ -21,6 +22,9 @@ from ..runtime.cron_service import CronJob, CronService
 from ..runtime.heartbeat_status_store import write_heartbeat_status_snapshot
 from ..runtime.heartbeat_utils import DEFAULT_HEARTBEAT_PROMPT, HEARTBEAT_TOKEN, strip_heartbeat_token
 from ..runtime.heartbeat_runner import HeartbeatRunRequest, HeartbeatRunner
+from ..runtime.identity_models import ResolvedPrincipal
+from ..runtime.identity_store import create_identity_store
+from ..runtime.interaction_context import InteractionContext
 from ..runtime.message_time import append_execution_time, inject_request_time
 from ..runtime.runner_factory import create_runner
 from ..runtime.step_events import build_step_metadata
@@ -83,9 +87,13 @@ class Gateway:
         bus: MessageBus,
         channel_manager: ChannelManager | None = None,
         session_service: Any | None = None,
+        identity_store: Any | None = None,
     ) -> None:
+        self.app_name = app_name
+        self._agent_id = getattr(agent, "name", app_name) or app_name
         self.bus = bus
         self.channel_manager = channel_manager
+        self._identity_store = identity_store or create_identity_store()
         self.runner, self.session_service = create_runner(
             agent=agent,
             app_name=app_name,
@@ -102,7 +110,7 @@ class Gateway:
         self._heartbeat_runner: HeartbeatRunner | None = None
         self._subagent_tasks: dict[str, asyncio.Task[None]] = {}
         self._subagent_semaphore = asyncio.Semaphore(self._subagent_max_concurrency())
-        # Map logical inbound session keys (channel:chat_id) to active ADK session ids.
+        # Map logical inbound session keys to active ADK session ids.
         self._session_overrides: dict[str, str] = {}
         self._inflight_user_requests = 0
         self._last_inbound_route: tuple[str, str] | None = None
@@ -185,6 +193,128 @@ class Gateway:
             return normalized[:max(0, max_chars)]
         return f"{normalized[: max_chars - 3]}..."
 
+    def _session_route_key(self, *, channel: str, chat_id: str, principal_id: str) -> str:
+        """Return the logical route key for one agent/chat/principal session."""
+        return f"{self._agent_id}:{channel}:{chat_id}:{principal_id}"
+
+    def _resolve_message_principal(self, msg: InboundMessage) -> ResolvedPrincipal:
+        """Resolve one inbound sender into the principal used by ADK runtime."""
+        return self._identity_store.resolve_message_principal(
+            channel=msg.channel,
+            sender_id=msg.sender_id,
+        )
+
+    def _resolve_service_principal(self, name: str) -> ResolvedPrincipal:
+        """Resolve one internal runtime principal."""
+        return self._identity_store.resolve_service_principal(name)
+
+    def _build_interaction_context(
+        self,
+        *,
+        principal: ResolvedPrincipal,
+        channel: str,
+        chat_id: str,
+        session_id: str,
+        session_route_key: str,
+    ) -> InteractionContext:
+        """Build the invocation-scoped context injected into ADK `temp:` state."""
+        return InteractionContext(
+            app_name=self.app_name,
+            agent_id=self._agent_id,
+            session_id=session_id,
+            session_route_key=session_route_key,
+            channel=channel,
+            chat_id=chat_id,
+            requester_principal_id=principal.principal_id,
+            requester_principal_type=principal.principal_type,
+            requester_level=principal.privilege_level,
+            requester_relation_to_agent="none",
+            requester_account_kind=principal.account_kind,
+            authenticated=principal.authenticated,
+            requester_display_name=principal.display_name,
+            external_subject_id=principal.external_subject_id or "",
+            external_display_id=principal.external_display_id or "",
+            memory_ingest_enabled=principal.memory_ingest_enabled,
+            metadata=dict(principal.metadata),
+        )
+
+    async def _current_event_count(self, *, runner: Any, user_id: str, session_id: str) -> int:
+        """Return the number of persisted events before the next invocation starts."""
+        get_session = getattr(self.session_service, "get_session", None)
+        if not callable(get_session):
+            return 0
+        try:
+            session = await get_session(
+                app_name=getattr(runner, "app_name", self.app_name),
+                user_id=user_id,
+                session_id=session_id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to inspect session before run (user_id=%s session_id=%s)",
+                user_id,
+                session_id,
+            )
+            return 0
+        if session is None:
+            return 0
+        return len(getattr(session, "events", []) or [])
+
+    async def _build_state_delta(self, *, runner: Any, interaction_context: InteractionContext) -> dict[str, Any]:
+        """Build per-invocation `state_delta` for runtime context and ingest offset."""
+        ingest_offset = await self._current_event_count(
+            runner=runner,
+            user_id=interaction_context.requester_principal_id,
+            session_id=interaction_context.session_id,
+        )
+        return interaction_context.to_state_delta(ingest_offset=ingest_offset)
+
+    @staticmethod
+    def _guess_mime_type(path: Path) -> str:
+        """Return one MIME type for a local media file path."""
+        mime_type, _ = mimetypes.guess_type(path.name)
+        return mime_type or "application/octet-stream"
+
+    def _build_media_part(self, media_path: str) -> types.Part | None:
+        """Convert one local media file into an inline ADK part."""
+        path = Path(media_path).expanduser()
+        try:
+            data = path.read_bytes()
+        except FileNotFoundError:
+            logger.warning("Skipping missing media attachment: %s", media_path)
+            return None
+        except Exception:
+            logger.exception("Failed reading media attachment: %s", media_path)
+            return None
+        return types.Part(
+            inline_data=types.Blob(
+                data=data,
+                mime_type=self._guess_mime_type(path),
+                display_name=path.name,
+            )
+        )
+
+    def _build_user_request(
+        self,
+        *,
+        text: str,
+        media_paths: list[str],
+        received_at: Any,
+    ) -> types.UserContent:
+        """Build one ADK user content payload from text plus local media files."""
+        parts: list[types.Part] = []
+        if text.strip():
+            prompt = inject_request_time(text, received_at=received_at)
+            parts.append(types.Part.from_text(text=prompt))
+        for media_path in media_paths:
+            media_part = self._build_media_part(media_path)
+            if media_part is not None:
+                parts.append(media_part)
+        if not parts:
+            prompt = inject_request_time(text, received_at=received_at)
+            parts.append(types.Part.from_text(text=prompt))
+        return types.UserContent(parts=parts)
+
     def heartbeat_status(self) -> dict[str, Any]:
         """Return heartbeat runtime status for diagnostics and operator tooling."""
         if self._heartbeat_runner is None:
@@ -257,6 +387,23 @@ class Gateway:
                     "delivered": False,
                 }
                 return
+            principal = self._resolve_service_principal("heartbeat")
+            session_route_key = self._session_route_key(
+                channel="local",
+                chat_id="heartbeat",
+                principal_id=principal.principal_id,
+            )
+            interaction_context = self._build_interaction_context(
+                principal=principal,
+                channel="local",
+                chat_id="heartbeat",
+                session_id="heartbeat:main",
+                session_route_key=session_route_key,
+            )
+            state_delta = await self._build_state_delta(
+                runner=self.runner,
+                interaction_context=interaction_context,
+            )
             prompt = append_execution_time(req.prompt)
             request = types.UserContent(parts=[types.Part.from_text(text=prompt)])
             final = await self._run_text_stream(
@@ -264,9 +411,10 @@ class Gateway:
                 channel="local",
                 chat_id="heartbeat",
                 default_when_empty=None,
-                user_id="heartbeat",
+                user_id=principal.principal_id,
                 session_id="heartbeat:main",
                 new_message=request,
+                state_delta=state_delta,
             )
             normalized = strip_heartbeat_token(
                 final,
@@ -491,13 +639,32 @@ class Gateway:
         )
         prompt = append_execution_time(job.payload.message)
         request = types.UserContent(parts=[types.Part.from_text(text=prompt)])
+        principal = self._resolve_service_principal("cron")
+        session_id = f"cron:{job.id}"
+        session_route_key = self._session_route_key(
+            channel=target_channel,
+            chat_id=target_chat_id,
+            principal_id=principal.principal_id,
+        )
+        interaction_context = self._build_interaction_context(
+            principal=principal,
+            channel=target_channel,
+            chat_id=target_chat_id,
+            session_id=session_id,
+            session_route_key=session_route_key,
+        )
+        state_delta = await self._build_state_delta(
+            runner=self.runner,
+            interaction_context=interaction_context,
+        )
         final = await self._run_text_stream(
             runner=self.runner,
             channel=target_channel,
             chat_id=target_chat_id,
-            user_id="cron",
-            session_id=f"cron:{job.id}",
+            user_id=principal.principal_id,
+            session_id=session_id,
             new_message=request,
+            state_delta=state_delta,
         )
         if job.payload.deliver:
             await self.bus.publish_outbound(
@@ -597,13 +764,19 @@ class Gateway:
                 content=_HELP_TEXT,
                 metadata=msg.metadata,
             )
+        principal = self._resolve_message_principal(msg)
+        session_route_key = self._session_route_key(
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            principal_id=principal.principal_id,
+        )
         if command == "/new":
-            active_session_id = self._session_overrides.get(msg.session_key, msg.session_key)
+            active_session_id = self._session_overrides.get(session_route_key, session_route_key)
             await self._persist_session_memory_snapshot(
-                user_id=msg.sender_id,
+                user_id=principal.principal_id,
                 session_id=active_session_id,
             )
-            self._session_overrides[msg.session_key] = f"{msg.session_key}:new:{uuid.uuid4().hex[:12]}"
+            self._session_overrides[session_route_key] = f"{session_route_key}:new:{uuid.uuid4().hex[:12]}"
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
@@ -611,18 +784,33 @@ class Gateway:
                 metadata=msg.metadata,
             )
 
-        active_session_id = self._session_overrides.get(msg.session_key, msg.session_key)
-        prompt = inject_request_time(msg.content, received_at=msg.timestamp)
-        request = types.UserContent(parts=[types.Part.from_text(text=prompt)])
+        active_session_id = self._session_overrides.get(session_route_key, session_route_key)
+        interaction_context = self._build_interaction_context(
+            principal=principal,
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            session_id=active_session_id,
+            session_route_key=session_route_key,
+        )
+        state_delta = await self._build_state_delta(
+            runner=self.runner,
+            interaction_context=interaction_context,
+        )
+        request = self._build_user_request(
+            text=msg.content,
+            media_paths=msg.media,
+            received_at=msg.timestamp,
+        )
         # Route context lets tools like `message(...)` infer the current target.
         final = await self._run_text_stream(
             runner=self.runner,
             channel=msg.channel,
             chat_id=msg.chat_id,
             emit_stream=bool((msg.metadata or {}).get("_wants_stream")),
-            user_id=msg.sender_id,
+            user_id=principal.principal_id,
             session_id=active_session_id,
             new_message=request,
+            state_delta=state_delta,
         )
         return OutboundMessage(
             channel=msg.channel,

@@ -9,8 +9,10 @@ from typing import Any
 
 from google.adk.memory import InMemoryMemoryService
 
+from ..core.config import get_data_dir
 from ..core.config import get_agent_home_dir
 from .markdown_memory_service import MarkdownMemoryService
+from .sqlite_memory_service import SQLiteMemoryService
 
 
 @dataclass(slots=True)
@@ -20,14 +22,17 @@ class MemoryConfig:
     Attributes:
         enabled: Whether long-term memory is enabled for the runner.
         backend: Memory backend name. Supported values:
-            - ``markdown`` (default)
+            - ``sqlite`` (default)
+            - ``markdown`` (legacy local backend)
             - ``in_memory`` (debug fallback)
         markdown_dir: Root directory for markdown memory files.
+        sqlite_db_path: SQLite database path for the primary backend.
     """
 
     enabled: bool
     backend: str
     markdown_dir: str
+    sqlite_db_path: str = ""
 
 
 def _parse_enabled(raw: str | None, *, default: bool) -> bool:
@@ -49,12 +54,19 @@ def _default_markdown_dir() -> Path:
     return get_agent_home_dir() / "memory"
 
 
+def _default_sqlite_db_path() -> Path:
+    """Resolve default SQLite memory database path."""
+    db_path = get_data_dir() / "database" / "memory.db"
+    return db_path
+
+
 def load_memory_config() -> MemoryConfig:
     """Load memory configuration from environment variables.
 
     Environment variables:
         - ``OPENPPX_MEMORY_ENABLED`` (default: ``1``)
-        - ``OPENPPX_MEMORY_BACKEND`` (default: ``markdown``)
+        - ``OPENPPX_MEMORY_BACKEND`` (default: ``sqlite``)
+        - ``OPENPPX_MEMORY_DB_PATH`` (optional)
         - ``OPENPPX_MEMORY_MARKDOWN_DIR`` (optional)
     """
     enabled = _parse_enabled(
@@ -62,13 +74,15 @@ def load_memory_config() -> MemoryConfig:
         default=True,
     )
     backend = (
-        os.getenv("OPENPPX_MEMORY_BACKEND", "markdown").strip().lower() or "markdown"
+        os.getenv("OPENPPX_MEMORY_BACKEND", "sqlite").strip().lower() or "sqlite"
     )
     markdown_dir = os.getenv("OPENPPX_MEMORY_MARKDOWN_DIR", "").strip() or str(_default_markdown_dir())
+    sqlite_db_path = os.getenv("OPENPPX_MEMORY_DB_PATH", "").strip() or str(_default_sqlite_db_path())
     return MemoryConfig(
         enabled=enabled,
         backend=backend,
         markdown_dir=markdown_dir,
+        sqlite_db_path=sqlite_db_path,
     )
 
 
@@ -83,6 +97,8 @@ def create_memory_service(config: MemoryConfig | None = None) -> Any | None:
     if not cfg.enabled:
         return None
 
+    if cfg.backend == "sqlite":
+        return SQLiteMemoryService(db_path=cfg.sqlite_db_path or str(_default_sqlite_db_path()))
     if cfg.backend == "markdown":
         return MarkdownMemoryService(root_dir=cfg.markdown_dir)
     return InMemoryMemoryService()
