@@ -39,7 +39,7 @@ messages/
 .adk/
 .openheron/
 .openppx/
-.openpipixia/
+.openppx/
 
 # Node
 node_modules/

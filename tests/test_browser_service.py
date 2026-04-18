@@ -7,12 +7,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from openpipixia.browser.service import (
+from openppx.browser.service import (
     BrowserDispatchRequest,
     get_browser_control_service,
     reset_browser_control_service,
 )
-from openpipixia.browser.runtime import configure_browser_runtime
+from openppx.browser.runtime import configure_browser_runtime
 
 
 class BrowserServiceTests(unittest.TestCase):
@@ -227,7 +227,7 @@ class BrowserServiceTests(unittest.TestCase):
         profiles = service.dispatch(BrowserDispatchRequest(method="GET", path="/profiles"))
         self.assertEqual(profiles.status, 200)
         names = {entry["name"] for entry in profiles.body["profiles"]}
-        self.assertIn("openpipixia", names)
+        self.assertIn("openppx", names)
         self.assertIn("chrome", names)
 
         chrome_status = service.dispatch(
@@ -248,11 +248,11 @@ class BrowserServiceTests(unittest.TestCase):
 
         profiles = service.dispatch(BrowserDispatchRequest(method="GET", path="/profiles"))
         self.assertEqual(profiles.status, 200)
-        openpipixia = next(entry for entry in profiles.body["profiles"] if entry["name"] == "openpipixia")
-        self.assertEqual(openpipixia["attach_mode"], openpipixia["attachMode"])
-        self.assertEqual(openpipixia["ownership_model"], openpipixia["ownershipModel"])
+        openppx = next(entry for entry in profiles.body["profiles"] if entry["name"] == "openppx")
+        self.assertEqual(openppx["attach_mode"], openppx["attachMode"])
+        self.assertEqual(openppx["ownership_model"], openppx["ownershipModel"])
 
-        status = service.dispatch(BrowserDispatchRequest(method="GET", path="/", query={"profile": "openpipixia"}))
+        status = service.dispatch(BrowserDispatchRequest(method="GET", path="/", query={"profile": "openppx"}))
         self.assertEqual(status.status, 200)
         self.assertEqual(status.body["browser_owned"], status.body["browserOwned"])
         self.assertEqual(status.body["context_owned"], status.body["contextOwned"])

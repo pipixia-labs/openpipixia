@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Script entrypoint to support: python ppx -m '...'."""
 
-from openpipixia.cli import main
+from openppx.cli import main
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
-# openpipixia 项目说明
+# openppx 项目说明
 
 ## 1. 项目定位
 
-`openpipixia` 是一个基于 Google ADK 的轻量级 Agent 系统，目标是用尽量小的实现覆盖完整的 Agent 运行链路：
+`openppx` 是一个基于 Google ADK 的轻量级 Agent 系统，目标是用尽量小的实现覆盖完整的 Agent 运行链路：
 
 - 多渠道消息接入（local/feishu/telegram/whatsapp/discord/dingtalk/email/slack/qq）
 - Skills 驱动的能力扩展（`SKILL.md`）
@@ -15,20 +15,20 @@
 
 ### 2.1 关键模块
 
-- `openpipixia/agent.py`
+- `openppx/agent.py`
   - 定义根代理 `root_agent`（`LlmAgent`）
   - 注册工具（含 `PreloadMemoryTool`、`spawn_subagent`）
   - `after_agent_callback` 中调用 `add_session_to_memory()` 做记忆写入
-- `openpipixia/gateway.py`
+- `openppx/gateway.py`
   - 网关主循环：消费 inbound，调用 ADK Runner，发布 outbound
   - 处理 `/help`、`/new` 等会话命令
-- `openpipixia/runtime/runner_factory.py`
+- `openppx/runtime/runner_factory.py`
   - 统一创建 `Runner`，启用 `ResumabilityConfig` 与 `EventsCompactionConfig`
-- `openpipixia/runtime/session_service.py`
+- `openppx/runtime/session_service.py`
   - 会话存储服务（SQLite `DatabaseSessionService`）
-- `openpipixia/runtime/memory_service.py`
+- `openppx/runtime/memory_service.py`
   - 记忆服务工厂（`in_memory` / `markdown`）
-- `openpipixia/runtime/markdown_memory_service.py`
+- `openppx/runtime/markdown_memory_service.py`
   - 本地 Markdown 记忆实现（按 `app_name/user_id` 分目录）
 
 ### 2.2 消息处理主链路
@@ -255,10 +255,10 @@ ppx doctor --fix
 
 ```bash
 # 单轮调用
-python -m openpipixia.cli -m "Describe what you can do"
+python -m openppx.cli -m "Describe what you can do"
 
 # 网关本地模式
-python -m openpipixia.cli gateway run --channels local --interactive-local
+python -m openppx.cli gateway run --channels local --interactive-local
 
 # 网关多渠道模式
 ppx gateway run --channels local,feishu --interactive-local

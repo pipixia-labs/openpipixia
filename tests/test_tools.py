@@ -1,4 +1,4 @@
-"""Tests for openpipixia core tools."""
+"""Tests for openppx core tools."""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.error import URLError
 
-from openpipixia.browser.service import BrowserDispatchResponse
-from openpipixia.runtime.tool_context import route_context
-from openpipixia.tooling.registry import (
+from openppx.browser.service import BrowserDispatchResponse
+from openppx.runtime.tool_context import route_context
+from openppx.tooling.registry import (
     SubagentSpawnRequest,
     browser,
     computer_task,
@@ -237,7 +237,7 @@ class ToolsTests(unittest.TestCase):
             captured["argv"] = args[0]
             return pytypes.SimpleNamespace(stdout="ok\n", stderr="", returncode=0)
 
-        with patch("openpipixia.tooling.registry.subprocess.run", side_effect=_fake_run):
+        with patch("openppx.tooling.registry.subprocess.run", side_effect=_fake_run):
             out = exec_command("echo hello", sandbox="bwrap")
 
         argv = captured.get("argv")
@@ -247,14 +247,14 @@ class ToolsTests(unittest.TestCase):
 
     def test_computer_use_tool_calls_executor(self) -> None:
         payload = {"ok": True, "arguments": {"action": "wait", "time": 1}}
-        with patch("openpipixia.tooling.registry.execute_gui_action", return_value=payload) as mocked:
+        with patch("openppx.tooling.registry.execute_gui_action", return_value=payload) as mocked:
             result = computer_use("wait 1 second", dry_run=True, model="m", api_key="k")
         self.assertIn('"ok": true', result)
         mocked.assert_called_once()
 
     def test_computer_task_tool_calls_runner(self) -> None:
         payload = {"ok": True, "finished": True, "message": "done", "steps": []}
-        with patch("openpipixia.tooling.registry.execute_gui_task", return_value=payload) as mocked:
+        with patch("openppx.tooling.registry.execute_gui_task", return_value=payload) as mocked:
             result = computer_task("finish login flow", max_steps=5, dry_run=True, planner_model="m", planner_api_key="k")
         self.assertIn('"ok": true', result)
         mocked.assert_called_once()
@@ -277,7 +277,7 @@ class ToolsTests(unittest.TestCase):
 
         reasons: list[str] = []
         configure_heartbeat_waker(reasons.append)
-        with patch("openpipixia.tooling.registry.get_process_session_manager", return_value=_DummyManager()):
+        with patch("openppx.tooling.registry.get_process_session_manager", return_value=_DummyManager()):
             process_session("write", session_id="s1", data="abc")
             process_session("send-keys", session_id="s1", literal="x")
             process_session("submit", session_id="s1")
@@ -1079,7 +1079,7 @@ class ToolsTests(unittest.TestCase):
 
         reasons: list[str] = []
         configure_heartbeat_waker(reasons.append)
-        with patch("openpipixia.tooling.registry.get_browser_control_service", return_value=_DummyService()):
+        with patch("openppx.tooling.registry.get_browser_control_service", return_value=_DummyService()):
             payload = json.loads(browser(action="upload", paths=["tmp/a.txt"]))
         self.assertTrue(payload["ok"])
         self.assertIn("hook:upload", reasons)
@@ -1091,7 +1091,7 @@ class ToolsTests(unittest.TestCase):
 
         reasons: list[str] = []
         configure_heartbeat_waker(reasons.append)
-        with patch("openpipixia.tooling.registry.get_browser_control_service", return_value=_DummyService()):
+        with patch("openppx.tooling.registry.get_browser_control_service", return_value=_DummyService()):
             payload = json.loads(browser(action="dialog", accept=True))
         self.assertTrue(payload["ok"])
         self.assertIn("hook:dialog", reasons)
@@ -1100,7 +1100,7 @@ class ToolsTests(unittest.TestCase):
         profiles = json.loads(browser(action="profiles"))
         self.assertTrue(profiles["profiles"])
         names = {entry["name"] for entry in profiles["profiles"]}
-        self.assertIn("openpipixia", names)
+        self.assertIn("openppx", names)
         self.assertIn("chrome", names)
 
         json.loads(browser(action="start"))
@@ -1117,7 +1117,7 @@ class ToolsTests(unittest.TestCase):
                     {
                         "profiles": [
                             {
-                                "name": "openpipixia",
+                                "name": "openppx",
                                 "attachMode": "launch-or-cdp",
                                 "ownershipModel": {"browser": "owned"},
                                 "requires": {"OPENPPX_BROWSER_CDP_URL": False},
@@ -1131,7 +1131,7 @@ class ToolsTests(unittest.TestCase):
                     },
                 )
 
-        with patch("openpipixia.tooling.registry.get_browser_control_service", return_value=_FakeBrowserService()):
+        with patch("openppx.tooling.registry.get_browser_control_service", return_value=_FakeBrowserService()):
             payload = json.loads(browser(action="profiles"))
         self.assertEqual(payload["profiles"][0]["attach_mode"], "launch-or-cdp")
         self.assertIn("ownership_model", payload["profiles"][0])
@@ -1188,11 +1188,11 @@ class ToolsTests(unittest.TestCase):
 
         def _fake_urlopen(req, timeout=20):
             captured["url"] = req.full_url
-            captured["token"] = req.headers.get("X-openpipixia-browser-proxy-token", "")
+            captured["token"] = req.headers.get("X-openppx-browser-proxy-token", "")
             captured["timeout"] = str(timeout)
             return _DummyResponse('{"ok": true, "via": "node-proxy"}')
 
-        with patch("openpipixia.tooling.registry.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.tooling.registry.urlopen", side_effect=_fake_urlopen):
             payload = json.loads(browser(action="status", target="node", node="node-1", timeout_ms=3500))
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["via"], "node-proxy")
@@ -1223,10 +1223,10 @@ class ToolsTests(unittest.TestCase):
 
         def _fake_urlopen(req, timeout=20):
             captured["url"] = req.full_url
-            captured["token"] = req.headers.get("X-openpipixia-browser-proxy-token", "")
+            captured["token"] = req.headers.get("X-openppx-browser-proxy-token", "")
             return _DummyResponse('{"ok": true, "via": "sandbox-proxy"}')
 
-        with patch("openpipixia.tooling.registry.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.tooling.registry.urlopen", side_effect=_fake_urlopen):
             payload = json.loads(browser(action="status", target="sandbox"))
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["via"], "sandbox-proxy")
@@ -1238,7 +1238,7 @@ class ToolsTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_NODE_CAPABILITY_JSON"] = json.dumps(
             {"capability": {"supportedActions": ["status", "snapshot"]}}
         )
-        with patch("openpipixia.tooling.registry.urlopen") as mocked_urlopen:
+        with patch("openppx.tooling.registry.urlopen") as mocked_urlopen:
             payload = json.loads(browser(action="pdf", target="node"))
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["status"], 501)
@@ -1257,7 +1257,7 @@ class ToolsTests(unittest.TestCase):
                 }
             }
         )
-        with patch("openpipixia.tooling.registry.urlopen") as mocked_urlopen:
+        with patch("openppx.tooling.registry.urlopen") as mocked_urlopen:
             payload = json.loads(browser(action="pdf", target="node"))
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["status"], 501)
@@ -1283,7 +1283,7 @@ class ToolsTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_NODE_CAPABILITY_JSON"] = json.dumps(
             {"supportedActions": ["status", "snapshot"]}
         )
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')) as mocked_urlopen:
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')) as mocked_urlopen:
             payload = json.loads(browser(action="status", target="node"))
         self.assertTrue(payload["ok"])
         mocked_urlopen.assert_called_once()
@@ -1306,7 +1306,7 @@ class ToolsTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_NODE_CAPABILITY_JSON"] = json.dumps(
             {"capability": {"backend": "node-proxy", "attachMode": "remote", "supportedActions": ["status"]}}
         )
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
             payload = json.loads(browser(action="status", target="node"))
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["target"], "node")
@@ -1332,7 +1332,7 @@ class ToolsTests(unittest.TestCase):
             {"capability": {"backend": "node-proxy", "supportedActions": ["status"]}}
         )
         with patch(
-            "openpipixia.tooling.registry.urlopen",
+            "openppx.tooling.registry.urlopen",
             return_value=_DummyResponse('{"ok":true,"capability":{"backend":"proxy-inline","attachMode":"inline"}}'),
         ):
             payload = json.loads(browser(action="status", target="node"))
@@ -1355,7 +1355,7 @@ class ToolsTests(unittest.TestCase):
                 return None
 
         os.environ["OPENPPX_BROWSER_NODE_PROXY_URL"] = "http://proxy.local:8787"
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
             payload = json.loads(browser(action="status", target="node"))
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["target"], "node")
@@ -1379,7 +1379,7 @@ class ToolsTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_NODE_PROXY_URL"] = "http://proxy.local:8787"
         os.environ["OPENPPX_BROWSER_NODE_CAPABILITY_JSON"] = '{"capability":'
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
             payload = json.loads(browser(action="status", target="node"))
         self.assertTrue(payload["ok"])
         self.assertIn("capabilityWarnings", payload)
@@ -1404,7 +1404,7 @@ class ToolsTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_NODE_CAPABILITY_JSON"] = json.dumps(
             {"capability": {"backend": "node-proxy", "supportedActions": ["status"], "errorCodes": "bad-shape"}}
         )
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
             payload = json.loads(browser(action="status", target="node"))
         self.assertTrue(payload["ok"])
         self.assertIn("capabilityWarnings", payload)
@@ -1427,7 +1427,7 @@ class ToolsTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_NODE_PROXY_URL"] = "http://proxy.local:8787"
         os.environ["OPENPPX_BROWSER_NODE_CAPABILITY_JSON"] = '{"capability":'
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
             payload = json.loads(browser(action="profiles", target="node"))
         self.assertTrue(payload["ok"])
         self.assertIn("capabilityWarnings", payload)
@@ -1452,7 +1452,7 @@ class ToolsTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_NODE_CAPABILITY_JSON"] = json.dumps(
             {"capability": {"supportedActions": ["status", "snapshot", "tabs"]}}
         )
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
             payload = json.loads(browser(action="status", target="node"))
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["supportedActions"], ["status", "tabs", "snapshot"])
@@ -1489,7 +1489,7 @@ class ToolsTests(unittest.TestCase):
                 }
             }
         )
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
             payload = json.loads(browser(action="status", target="node"))
         self.assertTrue(payload["ok"])
         self.assertEqual(
@@ -1517,7 +1517,7 @@ class ToolsTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_NODE_CAPABILITY_JSON"] = json.dumps(
             {"capability": {"supportedActions": ["status", "profiles", "tabs", "snapshot"]}}
         )
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
             payload = json.loads(browser(action="status", target="node"))
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["recommendedActions"], ["status", "profiles"])
@@ -1541,7 +1541,7 @@ class ToolsTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_NODE_CAPABILITY_JSON"] = json.dumps(
             {"capability": {"supportedActions": ["status", "profiles", "tabs", "snapshot", "open", "pdf"]}}
         )
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
             payload = json.loads(browser(action="status", target="node"))
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["recommendedActions"], ["status", "profiles", "tabs", "snapshot", "open"])
@@ -1567,7 +1567,7 @@ class ToolsTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_NODE_CAPABILITY_JSON"] = json.dumps(
             {"capability": {"supportedActions": ["status", "profiles", "snapshot", "pdf"]}}
         )
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
             payload = json.loads(browser(action="status", target="node"))
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["supportedActions"], ["pdf", "snapshot", "status", "profiles"])
@@ -1593,7 +1593,7 @@ class ToolsTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_NODE_CAPABILITY_JSON"] = json.dumps(
             {"capability": {"supportedActions": ["status", "profiles", "snapshot"]}}
         )
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
             payload = json.loads(browser(action="status", target="node"))
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["supportedActions"], ["status", "profiles", "snapshot"])
@@ -1613,7 +1613,7 @@ class ToolsTests(unittest.TestCase):
                 return None
 
         os.environ["OPENPPX_BROWSER_SANDBOX_PROXY_URL"] = "http://sandbox-proxy.local:9797"
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse('{"ok":true}')):
             payload = json.loads(browser(action="profiles", target="sandbox"))
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["target"], "sandbox")
@@ -1638,10 +1638,10 @@ class ToolsTests(unittest.TestCase):
             def dispatch(self, _request):
                 return BrowserDispatchResponse(
                     status=409,
-                    body={"ok": False, "error": "profile mismatch: active profile is openpipixia"},
+                    body={"ok": False, "error": "profile mismatch: active profile is openppx"},
                 )
 
-        with patch("openpipixia.tooling.registry.get_browser_control_service", return_value=_DummyService()):
+        with patch("openppx.tooling.registry.get_browser_control_service", return_value=_DummyService()):
             payload = json.loads(browser(action="status"))
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["status"], 409)
@@ -1662,7 +1662,7 @@ class ToolsTests(unittest.TestCase):
                     },
                 )
 
-        with patch("openpipixia.tooling.registry.get_browser_control_service", return_value=_DummyService()):
+        with patch("openppx.tooling.registry.get_browser_control_service", return_value=_DummyService()):
             payload = json.loads(browser(action="status"))
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["status"], 503)
@@ -1680,7 +1680,7 @@ class ToolsTests(unittest.TestCase):
                 return None
 
         os.environ["OPENPPX_BROWSER_NODE_PROXY_URL"] = "http://proxy.local:8787"
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_DummyResponse()):
+        with patch("openppx.tooling.registry.urlopen", return_value=_DummyResponse()):
             payload = json.loads(browser(action="status", target="node"))
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["status"], 502)
@@ -1696,7 +1696,7 @@ class ToolsTests(unittest.TestCase):
             hdrs=None,
             fp=BytesIO(b'{"error":"rate limited","status":429}'),
         )
-        with patch("openpipixia.tooling.registry.urlopen", side_effect=http_error):
+        with patch("openppx.tooling.registry.urlopen", side_effect=http_error):
             payload = json.loads(browser(action="status", target="node"))
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["status"], 429)
@@ -1705,7 +1705,7 @@ class ToolsTests(unittest.TestCase):
 
     def test_browser_tool_maps_proxy_timeout_error(self) -> None:
         os.environ["OPENPPX_BROWSER_NODE_PROXY_URL"] = "http://proxy.local:8787"
-        with patch("openpipixia.tooling.registry.urlopen", side_effect=URLError(TimeoutError("timed out"))):
+        with patch("openppx.tooling.registry.urlopen", side_effect=URLError(TimeoutError("timed out"))):
             payload = json.loads(browser(action="status", target="node"))
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["status"], 504)
@@ -1714,7 +1714,7 @@ class ToolsTests(unittest.TestCase):
 
     def test_browser_tool_maps_proxy_direct_timeout_error(self) -> None:
         os.environ["OPENPPX_BROWSER_NODE_PROXY_URL"] = "http://proxy.local:8787"
-        with patch("openpipixia.tooling.registry.urlopen", side_effect=TimeoutError("timed out")):
+        with patch("openppx.tooling.registry.urlopen", side_effect=TimeoutError("timed out")):
             payload = json.loads(browser(action="status", target="node"))
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["status"], 504)
@@ -1722,7 +1722,7 @@ class ToolsTests(unittest.TestCase):
 
     def test_browser_tool_maps_proxy_connection_refused_error(self) -> None:
         os.environ["OPENPPX_BROWSER_NODE_PROXY_URL"] = "http://proxy.local:8787"
-        with patch("openpipixia.tooling.registry.urlopen", side_effect=URLError(ConnectionRefusedError("refused"))):
+        with patch("openppx.tooling.registry.urlopen", side_effect=URLError(ConnectionRefusedError("refused"))):
             payload = json.loads(browser(action="status", target="node"))
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["status"], 503)
@@ -1741,7 +1741,7 @@ class ToolsTests(unittest.TestCase):
             hdrs=None,
             fp=BytesIO(b'{"error":"failed","status":502}'),
         )
-        with patch("openpipixia.tooling.registry.urlopen", side_effect=http_error):
+        with patch("openppx.tooling.registry.urlopen", side_effect=http_error):
             payload = json.loads(browser(action="status", target="node"))
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["target"], "node")
@@ -1749,7 +1749,7 @@ class ToolsTests(unittest.TestCase):
 
     def test_browser_tool_proxy_url_error_includes_default_target_capability(self) -> None:
         os.environ["OPENPPX_BROWSER_SANDBOX_PROXY_URL"] = "http://sandbox-proxy.local:9797"
-        with patch("openpipixia.tooling.registry.urlopen", side_effect=URLError(TimeoutError("timed out"))):
+        with patch("openppx.tooling.registry.urlopen", side_effect=URLError(TimeoutError("timed out"))):
             payload = json.loads(browser(action="status", target="sandbox"))
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["target"], "sandbox")
@@ -1803,7 +1803,7 @@ class ToolsTests(unittest.TestCase):
                 return False
 
         with patch(
-            "openpipixia.tooling.registry.urlopen",
+            "openppx.tooling.registry.urlopen",
             side_effect=[URLError("fallback"), _FakeResponse(b"<html>redirected</html>")],
         ):
             payload = json.loads(web_fetch("https://example.com"))
@@ -1830,7 +1830,7 @@ class ToolsTests(unittest.TestCase):
                 "content": "Hello from Jina",
             }
         }
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_FakeResponse(json.dumps(payload).encode("utf-8"))):
+        with patch("openppx.tooling.registry.urlopen", return_value=_FakeResponse(json.dumps(payload).encode("utf-8"))):
             result = json.loads(web_fetch("https://example.com"))
 
         self.assertEqual(result["extractor"], "jina")
@@ -1850,7 +1850,7 @@ class ToolsTests(unittest.TestCase):
                 return False
 
         with patch(
-            "openpipixia.tooling.registry.urlopen",
+            "openppx.tooling.registry.urlopen",
             side_effect=[URLError("fallback"), _FakeImageResponse(b"\x89PNG\r\n")],
         ):
             result = json.loads(web_fetch("https://example.com/image.png"))
@@ -1897,7 +1897,7 @@ class ToolsTests(unittest.TestCase):
             def __exit__(self, exc_type, exc, tb):
                 return False
 
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_FakeResponse(html_body.encode("utf-8"))):
+        with patch("openppx.tooling.registry.urlopen", return_value=_FakeResponse(html_body.encode("utf-8"))):
             out = web_search("adk")
 
         self.assertIn("Example Title", out)

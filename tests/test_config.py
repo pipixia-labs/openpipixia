@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from openpipixia.core.config import (
+from openppx.core.config import (
     apply_agent_privilege_level_defaults,
     apply_config_to_env,
     bootstrap_env_from_config,
@@ -581,7 +581,7 @@ class ConfigTests(unittest.TestCase):
             save_runtime_config(
                 {
                     "env": {
-                        "OPENPPX_MEMORY_MARKDOWN_DIR": str(Path.home() / ".openpipixia" / "workspace" / "memory"),
+                        "OPENPPX_MEMORY_MARKDOWN_DIR": str(Path.home() / ".openppx" / "workspace" / "memory"),
                     }
                 },
                 runtime_path,

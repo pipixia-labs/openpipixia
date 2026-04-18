@@ -5,12 +5,12 @@ import asyncio
 from google.adk.memory.memory_entry import MemoryEntry
 from google.genai import types
 
-from openpipixia.runtime.access_policy import AccessPolicy
-from openpipixia.runtime.agent_access_store import AgentAccessStore, AgentMembership
-from openpipixia.runtime.identity_models import ResolvedPrincipal
-from openpipixia.runtime.identity_store import IdentityStore
-from openpipixia.runtime.memory_query_service import MemoryQueryService
-from openpipixia.runtime.sqlite_memory_service import SQLiteMemoryService
+from openppx.runtime.access_policy import AccessPolicy
+from openppx.runtime.agent_access_store import AgentAccessStore, AgentMembership
+from openppx.runtime.identity_models import ResolvedPrincipal
+from openppx.runtime.identity_store import IdentityStore
+from openppx.runtime.memory_query_service import MemoryQueryService
+from openppx.runtime.sqlite_memory_service import SQLiteMemoryService
 
 
 def _principal(*, principal_id: str, privilege_level: str = "minimal") -> ResolvedPrincipal:
@@ -48,7 +48,7 @@ def test_memory_query_service_owner_can_query_participant_scope(tmp_path) -> Non
     memory_service = SQLiteMemoryService(db_path=memory_db_path)
     asyncio.run(
         memory_service.add_memory(
-            app_name="openpipixia",
+            app_name="openppx",
             user_id=participant.principal_id,
             memories=[_memory("remember the launch checklist", timestamp="2026-04-18T10:00:00+08:00")],
         )
@@ -88,14 +88,14 @@ def test_memory_query_service_root_gets_all_principals(tmp_path) -> None:
     memory_service = SQLiteMemoryService(db_path=memory_db_path)
     asyncio.run(
         memory_service.add_memory(
-            app_name="openpipixia",
+            app_name="openppx",
             user_id=user_a.principal_id,
             memories=[_memory("project atlas milestone", timestamp="2026-04-18T09:00:00+08:00")],
         )
     )
     asyncio.run(
         memory_service.add_memory(
-            app_name="openpipixia",
+            app_name="openppx",
             user_id=user_b.principal_id,
             memories=[_memory("atlas postmortem notes", timestamp="2026-04-18T11:00:00+08:00")],
         )

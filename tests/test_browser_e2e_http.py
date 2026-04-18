@@ -12,8 +12,8 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from openpipixia.browser.runtime import configure_browser_runtime
-from openpipixia.tooling.registry import browser
+from openppx.browser.runtime import configure_browser_runtime
+from openppx.tooling.registry import browser
 
 
 class BrowserE2EHttpTests(unittest.TestCase):
@@ -26,8 +26,8 @@ class BrowserE2EHttpTests(unittest.TestCase):
         class _Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:  # noqa: N802
                 captured["path"] = self.path
-                captured["proxy_token"] = self.headers.get("X-OpenPipixia-Browser-Proxy-Token", "")
-                captured["relay_token"] = self.headers.get("X-OpenPipixia-Browser-Relay-Token", "")
+                captured["proxy_token"] = self.headers.get("X-OpenPPX-Browser-Proxy-Token", "")
+                captured["relay_token"] = self.headers.get("X-OpenPPX-Browser-Relay-Token", "")
                 parsed = urlparse(self.path)
                 relay_mode = str(captured.get("relay_mode") or "").strip().lower()
                 query = parse_qs(parsed.query)
@@ -258,7 +258,7 @@ class BrowserE2EHttpTests(unittest.TestCase):
                 post_paths = captured.get("post_paths")
                 if isinstance(post_paths, list):
                     post_paths.append(self.path)
-                captured["relay_token"] = self.headers.get("X-OpenPipixia-Browser-Relay-Token", "")
+                captured["relay_token"] = self.headers.get("X-OpenPPX-Browser-Relay-Token", "")
                 body_len = int(self.headers.get("Content-Length", "0") or "0")
                 raw = self.rfile.read(body_len).decode("utf-8", errors="replace") if body_len > 0 else ""
                 captured["body"] = raw

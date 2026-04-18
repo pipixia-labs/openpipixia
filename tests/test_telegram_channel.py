@@ -6,9 +6,9 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from openpipixia.bus.events import OutboundMessage
-from openpipixia.bus.queue import MessageBus
-from openpipixia.channels.telegram import TelegramChannel
+from openppx.bus.events import OutboundMessage
+from openppx.bus.queue import MessageBus
+from openppx.channels.telegram import TelegramChannel
 
 
 class TelegramChannelTests(unittest.IsolatedAsyncioTestCase):

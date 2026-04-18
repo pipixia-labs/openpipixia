@@ -5,9 +5,9 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from openpipixia.bus.events import OutboundMessage
-from openpipixia.bus.queue import MessageBus
-from openpipixia.channels.feishu import (
+from openppx.bus.events import OutboundMessage
+from openppx.bus.queue import MessageBus
+from openppx.channels.feishu import (
     FeishuChannel,
     _build_step_card,
     _detect_msg_format,

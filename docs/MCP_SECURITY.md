@@ -2,7 +2,7 @@
 
 ## MCP Tool Integration（最小接入）
 
-`openpipixia` 使用 ADK `McpToolset`，从 `tools.mcpServers` 读取服务配置。
+`openppx` 使用 ADK `McpToolset`，从 `tools.mcpServers` 读取服务配置。
 
 ### 每个服务可配置字段
 
@@ -30,9 +30,9 @@
 {
   "tools": {
     "mcpServers": {
-      "openpipixia_gui": {
+      "openppx_gui": {
         "enabled": true,
-        "command": "openpipixia-gui-mcp",
+        "command": "openppx-gui-mcp",
         "args": [],
         "toolNamePrefix": "mcp_gui_",
         "requireConfirmation": true
@@ -61,7 +61,7 @@
 
 ## 安全策略
 
-`openpipixia` 用统一策略约束文件、命令、网络能力。
+`openppx` 用统一策略约束文件、命令、网络能力。
 
 | 字段 | 默认值 | 说明 |
 |---|---|---|

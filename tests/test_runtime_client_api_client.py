@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from openpipixia.runtime.client_api_client import ClientApiClient
+from openppx.runtime.client_api_client import ClientApiClient
 
 
 class _FakeHttpResponse:
@@ -31,7 +31,7 @@ def test_client_api_client_get_agent_access_builds_get_request() -> None:
         return _FakeHttpResponse({"ok": True, "data": {"agent": {"id": "writer"}}})
 
     client = ClientApiClient(base_url="http://127.0.0.1:9999", timeout_seconds=3.5)
-    with patch("openpipixia.runtime.client_api_client.request.urlopen", side_effect=_fake_urlopen):
+    with patch("openppx.runtime.client_api_client.request.urlopen", side_effect=_fake_urlopen):
         payload = client.get_agent_access("writer", user_id="owner")
 
     assert payload["ok"] is True
@@ -51,7 +51,7 @@ def test_client_api_client_list_memory_audit_builds_get_request() -> None:
         return _FakeHttpResponse({"ok": True, "data": {"items": []}})
 
     client = ClientApiClient()
-    with patch("openpipixia.runtime.client_api_client.request.urlopen", side_effect=_fake_urlopen):
+    with patch("openppx.runtime.client_api_client.request.urlopen", side_effect=_fake_urlopen):
         payload = client.list_memory_audit("writer", user_id="owner", limit=25)
 
     assert payload["ok"] is True
@@ -70,7 +70,7 @@ def test_client_api_client_list_access_audit_builds_get_request() -> None:
         return _FakeHttpResponse({"ok": True, "data": {"items": []}})
 
     client = ClientApiClient()
-    with patch("openpipixia.runtime.client_api_client.request.urlopen", side_effect=_fake_urlopen):
+    with patch("openppx.runtime.client_api_client.request.urlopen", side_effect=_fake_urlopen):
         payload = client.list_access_audit("writer", user_id="owner", limit=10, category="mutation")
 
     assert payload["ok"] is True
@@ -89,7 +89,7 @@ def test_client_api_client_posts_owner_update() -> None:
         return _FakeHttpResponse({"ok": True, "data": {"agent": {"owner_principal_id": "root-user"}}})
 
     client = ClientApiClient()
-    with patch("openpipixia.runtime.client_api_client.request.urlopen", side_effect=_fake_urlopen):
+    with patch("openppx.runtime.client_api_client.request.urlopen", side_effect=_fake_urlopen):
         payload = client.set_agent_owner("writer", "root-user", user_id="admin")
 
     assert payload["ok"] is True
@@ -109,7 +109,7 @@ def test_client_api_client_membership_mutations_cover_post_and_delete() -> None:
         return _FakeHttpResponse({"ok": True, "data": {}})
 
     client = ClientApiClient()
-    with patch("openpipixia.runtime.client_api_client.request.urlopen", side_effect=_fake_urlopen):
+    with patch("openppx.runtime.client_api_client.request.urlopen", side_effect=_fake_urlopen):
         add_payload = client.upsert_agent_membership("writer", "alice", relation="participant", user_id="owner")
         remove_payload = client.delete_agent_membership("writer", "alice", user_id="owner")
 
@@ -137,7 +137,7 @@ def test_client_api_client_batch_membership_mutations_use_batch_endpoint() -> No
         return _FakeHttpResponse({"ok": True, "data": {}})
 
     client = ClientApiClient()
-    with patch("openpipixia.runtime.client_api_client.request.urlopen", side_effect=_fake_urlopen):
+    with patch("openppx.runtime.client_api_client.request.urlopen", side_effect=_fake_urlopen):
         add_payload = client.batch_add_participants("writer", ["alice", "bob"], user_id="owner", dry_run=True)
         remove_payload = client.batch_remove_participants("writer", ["alice"], user_id="owner")
         sync_payload = client.sync_participants("writer", ["alice", "carol"], user_id="owner")

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from openpipixia.runtime.identity_store import IdentityStore
+from openppx.runtime.identity_store import IdentityStore
 
 
 class IdentityStoreTests(unittest.TestCase):

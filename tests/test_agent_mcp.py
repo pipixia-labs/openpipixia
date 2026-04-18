@@ -9,19 +9,19 @@ from unittest.mock import patch
 
 class AgentMcpTests(unittest.TestCase):
     def test_build_tools_appends_mcp_toolsets(self) -> None:
-        from openpipixia import agent
+        from openppx import agent
 
         sentinel_toolset = object()
-        with patch("openpipixia.app.agent.build_mcp_toolsets_from_env", return_value=[sentinel_toolset]):
+        with patch("openppx.app.agent.build_mcp_toolsets_from_env", return_value=[sentinel_toolset]):
             tools = agent._build_tools()
 
         self.assertIn(sentinel_toolset, tools)
 
     def test_build_tools_keeps_builtin_gui_tools_enabled_by_default(self) -> None:
-        from openpipixia import agent
-        from openpipixia.tooling.registry import computer_task, computer_use, glob, grep
+        from openppx import agent
+        from openppx.tooling.registry import computer_task, computer_use, glob, grep
 
-        with patch("openpipixia.app.agent.build_mcp_toolsets_from_env", return_value=[]):
+        with patch("openppx.app.agent.build_mcp_toolsets_from_env", return_value=[]):
             tools = agent._build_tools()
         self.assertIn(computer_task, tools)
         self.assertIn(computer_use, tools)
@@ -29,23 +29,23 @@ class AgentMcpTests(unittest.TestCase):
         self.assertIn(grep, tools)
 
     def test_build_tools_can_disable_builtin_gui_tools(self) -> None:
-        from openpipixia import agent
-        from openpipixia.tooling.registry import computer_task, computer_use
+        from openppx import agent
+        from openppx.tooling.registry import computer_task, computer_use
 
         with patch.dict(os.environ, {"OPENPPX_GUI_BUILTIN_TOOLS_ENABLED": "0"}, clear=False):
-            with patch("openpipixia.app.agent.build_mcp_toolsets_from_env", return_value=[]):
+            with patch("openppx.app.agent.build_mcp_toolsets_from_env", return_value=[]):
                 tools = agent._build_tools()
         self.assertNotIn(computer_task, tools)
         self.assertNotIn(computer_use, tools)
 
     def test_build_instruction_uses_resolved_gui_mcp_tool_names(self) -> None:
-        from openpipixia import agent
+        from openppx import agent
 
         with patch.dict(
             os.environ,
             {
                 "OPENPPX_MCP_SERVERS_JSON": (
-                    '{"gui_remote":{"enabled":true,"command":"openpipixia-gui-mcp","toolNamePrefix":"desktop_"}}'
+                    '{"gui_remote":{"enabled":true,"command":"openppx-gui-mcp","toolNamePrefix":"desktop_"}}'
                 )
             },
             clear=False,
@@ -55,15 +55,15 @@ class AgentMcpTests(unittest.TestCase):
         self.assertIn("desktop_gui_action", text)
 
     def test_build_tools_limits_low_to_read_only_tools(self) -> None:
-        from openpipixia import agent
-        from openpipixia.tooling.registry import read_file, list_dir, write_file, exec_command, web_search
+        from openppx import agent
+        from openppx.tooling.registry import read_file, list_dir, write_file, exec_command, web_search
 
         with patch.dict(
             os.environ,
             {"OPENPPX_AGENT_PRIVILEGE_LEVEL": "low", "OPENPPX_CAN_DELEGATE": "0"},
             clear=False,
         ):
-            with patch("openpipixia.app.agent.build_mcp_toolsets_from_env", return_value=[]):
+            with patch("openppx.app.agent.build_mcp_toolsets_from_env", return_value=[]):
                 tools = agent._build_tools()
 
         self.assertIn(read_file, tools)
@@ -73,15 +73,15 @@ class AgentMcpTests(unittest.TestCase):
         self.assertNotIn(web_search, tools)
 
     def test_build_tools_keeps_medium_exec_and_web_but_hides_message_tools(self) -> None:
-        from openpipixia import agent
-        from openpipixia.tooling.registry import exec_command, web_search, message, message_file
+        from openppx import agent
+        from openppx.tooling.registry import exec_command, web_search, message, message_file
 
         with patch.dict(
             os.environ,
             {"OPENPPX_AGENT_PRIVILEGE_LEVEL": "medium", "OPENPPX_CAN_DELEGATE": "1"},
             clear=False,
         ):
-            with patch("openpipixia.app.agent.build_mcp_toolsets_from_env", return_value=[]):
+            with patch("openppx.app.agent.build_mcp_toolsets_from_env", return_value=[]):
                 tools = agent._build_tools()
 
         self.assertIn(exec_command, tools)
@@ -90,15 +90,15 @@ class AgentMcpTests(unittest.TestCase):
         self.assertNotIn(message_file, tools)
 
     def test_build_tools_keeps_high_full_tool_access(self) -> None:
-        from openpipixia import agent
-        from openpipixia.tooling.registry import exec_command, web_search, message, message_file
+        from openppx import agent
+        from openppx.tooling.registry import exec_command, web_search, message, message_file
 
         with patch.dict(
             os.environ,
             {"OPENPPX_AGENT_PRIVILEGE_LEVEL": "high", "OPENPPX_CAN_DELEGATE": "1"},
             clear=False,
         ):
-            with patch("openpipixia.app.agent.build_mcp_toolsets_from_env", return_value=[]):
+            with patch("openppx.app.agent.build_mcp_toolsets_from_env", return_value=[]):
                 tools = agent._build_tools()
 
         self.assertIn(exec_command, tools)

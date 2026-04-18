@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from openpipixia.runtime.cron_schedule_parser import parse_schedule_input
+from openppx.runtime.cron_schedule_parser import parse_schedule_input
 
 
 class CronScheduleParserTests(unittest.TestCase):

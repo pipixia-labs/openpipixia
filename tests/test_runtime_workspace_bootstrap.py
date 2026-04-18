@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from openpipixia.runtime.workspace_bootstrap import (
+from openppx.runtime.workspace_bootstrap import (
     before_model_workspace_bootstrap_callback,
     load_workspace_bootstrap_sections,
 )
@@ -45,7 +45,7 @@ class WorkspaceBootstrapTests(unittest.TestCase):
             (root / "AGENTS.md").write_text("follow local agent rules", encoding="utf-8")
             (root / "SOUL.md").write_text("keep a concise tone", encoding="utf-8")
             (root / "TOOLS.md").write_text("always check tool constraints first", encoding="utf-8")
-            (root / "IDENTITY.md").write_text("name: openpipixia", encoding="utf-8")
+            (root / "IDENTITY.md").write_text("name: openppx", encoding="utf-8")
             (root / "USER.md").write_text("user prefers chinese", encoding="utf-8")
 
             llm_request = types.SimpleNamespace(
@@ -56,7 +56,7 @@ class WorkspaceBootstrapTests(unittest.TestCase):
                 asyncio.run(before_model_workspace_bootstrap_callback(types.SimpleNamespace(), llm_request))
 
         system_instruction = llm_request.config.system_instruction
-        self.assertIn("Agent Context (injected by openpipixia)", system_instruction)
+        self.assertIn("Agent Context (injected by openppx)", system_instruction)
         self.assertIn("## AGENTS.md", system_instruction)
         self.assertIn("## SOUL.md", system_instruction)
         self.assertIn("## TOOLS.md", system_instruction)
@@ -65,10 +65,10 @@ class WorkspaceBootstrapTests(unittest.TestCase):
         self.assertIn("follow local agent rules", system_instruction)
         self.assertIn("keep a concise tone", system_instruction)
         self.assertIn("always check tool constraints first", system_instruction)
-        self.assertIn("name: openpipixia", system_instruction)
+        self.assertIn("name: openppx", system_instruction)
         self.assertIn("user prefers chinese", system_instruction)
         self.assertLess(
-            system_instruction.index("Agent Context (injected by openpipixia)"),
+            system_instruction.index("Agent Context (injected by openppx)"),
             system_instruction.index("base-system-instruction"),
         )
 
@@ -98,7 +98,7 @@ class WorkspaceBootstrapTests(unittest.TestCase):
                     )
                 )
 
-        self.assertIn("Agent Context (injected by openpipixia)", llm_request.config.system_instruction)
+        self.assertIn("Agent Context (injected by openppx)", llm_request.config.system_instruction)
 
 
 if __name__ == "__main__":

@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 import unittest
 
-from openpipixia.bus.queue import MessageBus
-from openpipixia.channels.factory import (
+from openppx.bus.queue import MessageBus
+from openppx.channels.factory import (
     build_channel_manager,
     parse_enabled_channels,
     validate_channel_setup,

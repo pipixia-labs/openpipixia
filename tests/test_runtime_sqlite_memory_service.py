@@ -13,7 +13,7 @@ from pathlib import Path
 from google.adk.memory.memory_entry import MemoryEntry
 from google.genai import types
 
-from openpipixia.runtime.sqlite_memory_service import SQLiteMemoryService
+from openppx.runtime.sqlite_memory_service import SQLiteMemoryService
 
 
 @dataclass(slots=True)
@@ -63,14 +63,14 @@ class SQLiteMemoryServiceTests(unittest.TestCase):
                     ),
                 ]
                 await service.add_events_to_memory(
-                    app_name="openpipixia",
+                    app_name="openppx",
                     user_id="human:local:user-1",
                     session_id="s1",
                     events=events,
                 )
 
                 response = await service.search_memory(
-                    app_name="openpipixia",
+                    app_name="openppx",
                     user_id="human:local:user-1",
                     query="alpha",
                 )
@@ -99,7 +99,7 @@ class SQLiteMemoryServiceTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 service = SQLiteMemoryService(db_path=Path(tmp) / "memory.db")
                 await service.add_events_to_memory(
-                    app_name="openpipixia",
+                    app_name="openppx",
                     user_id="human:local:user-2",
                     session_id="s1",
                     events=[
@@ -113,7 +113,7 @@ class SQLiteMemoryServiceTests(unittest.TestCase):
                 )
 
                 response = await service.search_memory(
-                    app_name="openpipixia",
+                    app_name="openppx",
                     user_id="human:local:user-2",
                     query="zebra",
                 )
@@ -130,7 +130,7 @@ class SQLiteMemoryServiceTests(unittest.TestCase):
                 db_path = Path(tmp) / "memory.db"
                 service = SQLiteMemoryService(db_path=db_path)
                 session = _Session(
-                    app_name="openpipixia",
+                    app_name="openppx",
                     user_id="human:local:user-3",
                     id="session-1",
                     events=[
@@ -145,7 +145,7 @@ class SQLiteMemoryServiceTests(unittest.TestCase):
                 await service.add_session_to_memory(session)
 
                 response = await service.search_memory(
-                    app_name="openpipixia",
+                    app_name="openppx",
                     user_id="human:local:user-3",
                     query="concise",
                 )
@@ -165,7 +165,7 @@ class SQLiteMemoryServiceTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 service = SQLiteMemoryService(db_path=Path(tmp) / "memory.db")
                 await service.add_memory(
-                    app_name="openpipixia",
+                    app_name="openppx",
                     user_id="human:local:user-4",
                     memories=[
                         MemoryEntry(
@@ -190,7 +190,7 @@ class SQLiteMemoryServiceTests(unittest.TestCase):
                 )
 
                 response = await service.search_memory(
-                    app_name="openpipixia",
+                    app_name="openppx",
                     user_id="human:local:user-4",
                     query="Seattle",
                 )

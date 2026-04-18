@@ -8,14 +8,14 @@ import types as pytypes
 import unittest
 from unittest.mock import patch
 
-from openpipixia.runtime.debug_callbacks import after_model_debug_callback, before_model_debug_callback
+from openppx.runtime.debug_callbacks import after_model_debug_callback, before_model_debug_callback
 
 
 class DebugCallbacksTests(unittest.TestCase):
     def test_before_model_emits_request_text_when_debug_enabled(self) -> None:
         callback_context = pytypes.SimpleNamespace(
             invocation_id="inv-1",
-            agent_name="openpipixia",
+            agent_name="openppx",
             user_id="u-1",
             session=pytypes.SimpleNamespace(id="s-1"),
         )
@@ -32,7 +32,7 @@ class DebugCallbacksTests(unittest.TestCase):
         )
 
         with patch.dict(os.environ, {"OPENPPX_DEBUG": "1"}, clear=False):
-            with patch("openpipixia.runtime.debug_callbacks._write_debug") as mocked_emit:
+            with patch("openppx.runtime.debug_callbacks._write_debug") as mocked_emit:
                 result = before_model_debug_callback(callback_context, llm_request)
 
         self.assertIsNone(result)
@@ -46,7 +46,7 @@ class DebugCallbacksTests(unittest.TestCase):
     def test_after_model_emits_response_text_when_debug_enabled(self) -> None:
         callback_context = pytypes.SimpleNamespace(
             invocation_id="inv-2",
-            agent_name="openpipixia",
+            agent_name="openppx",
             user_id="u-2",
             session=pytypes.SimpleNamespace(id="s-2"),
         )
@@ -60,7 +60,7 @@ class DebugCallbacksTests(unittest.TestCase):
         )
 
         with patch.dict(os.environ, {"OPENPPX_DEBUG": "1"}, clear=False):
-            with patch("openpipixia.runtime.debug_callbacks._write_debug") as mocked_emit:
+            with patch("openppx.runtime.debug_callbacks._write_debug") as mocked_emit:
                 result = after_model_debug_callback(callback_context, llm_response)
 
         self.assertIsNone(result)
@@ -73,7 +73,7 @@ class DebugCallbacksTests(unittest.TestCase):
     def test_after_model_does_not_truncate_when_max_chars_is_zero(self) -> None:
         callback_context = pytypes.SimpleNamespace(
             invocation_id="inv-2b",
-            agent_name="openpipixia",
+            agent_name="openppx",
             user_id="u-2b",
             session=pytypes.SimpleNamespace(id="s-2b"),
         )
@@ -92,7 +92,7 @@ class DebugCallbacksTests(unittest.TestCase):
             {"OPENPPX_DEBUG": "1", "OPENPPX_DEBUG_MAX_CHARS": "0"},
             clear=False,
         ):
-            with patch("openpipixia.runtime.debug_callbacks._write_debug") as mocked_emit:
+            with patch("openppx.runtime.debug_callbacks._write_debug") as mocked_emit:
                 result = after_model_debug_callback(callback_context, llm_response)
 
         self.assertIsNone(result)
@@ -119,7 +119,7 @@ class DebugCallbacksTests(unittest.TestCase):
         )
 
         with patch.dict(os.environ, {"OPENPPX_DEBUG": "0"}, clear=False):
-            with patch("openpipixia.runtime.debug_callbacks._write_debug") as mocked_emit:
+            with patch("openppx.runtime.debug_callbacks._write_debug") as mocked_emit:
                 before_model_debug_callback(callback_context, llm_request)
                 after_model_debug_callback(callback_context, llm_response)
 
@@ -235,7 +235,7 @@ class DebugCallbacksTests(unittest.TestCase):
     def test_after_model_records_token_usage_when_available(self) -> None:
         callback_context = pytypes.SimpleNamespace(
             invocation_id="inv-usage-1",
-            agent_name="openpipixia",
+            agent_name="openppx",
             user_id="u-usage",
             session=pytypes.SimpleNamespace(id="s-usage"),
         )
@@ -270,7 +270,7 @@ class DebugCallbacksTests(unittest.TestCase):
 
         with patch.dict(os.environ, {"OPENPPX_DEBUG": "0", "OPENPPX_PROVIDER": "google"}, clear=False):
             before_model_debug_callback(callback_context, llm_request)
-            with patch("openpipixia.runtime.debug_callbacks.write_token_usage_event") as mocked_write:
+            with patch("openppx.runtime.debug_callbacks.write_token_usage_event") as mocked_write:
                 after_model_debug_callback(callback_context, llm_response)
 
         mocked_write.assert_called_once()

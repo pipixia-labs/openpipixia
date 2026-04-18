@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from openpipixia.core.config import default_config, save_config
+from openppx.core.config import default_config, save_config
 from scripts import gui_smoke
 
 
@@ -36,7 +36,7 @@ class GuiSmokeTests(unittest.TestCase):
 
     def test_bootstrap_falls_back_to_first_enabled_agent_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            data_dir = Path(tmp) / ".openpipixia"
+            data_dir = Path(tmp) / ".openppx"
             data_dir.mkdir(parents=True, exist_ok=True)
             os.environ["OPENPPX_DATA_DIR"] = str(data_dir)
             global_config = {

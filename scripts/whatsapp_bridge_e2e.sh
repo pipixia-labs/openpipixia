@@ -33,7 +33,7 @@ export OPENPPX_CHANNELS="${OPENPPX_CHANNELS:-whatsapp}"
 export WHATSAPP_BRIDGE_URL="${WHATSAPP_BRIDGE_URL:-ws://127.0.0.1:3001}"
 
 run_cli() {
-  "${PYTHON_BIN}" -m openpipixia.cli "$@"
+  "${PYTHON_BIN}" -m openppx.cli "$@"
 }
 
 cmd_login() {
@@ -73,10 +73,10 @@ cmd_full() {
 
   cat <<'EOF'
 [next] Manual runtime validation:
-  1) Start bridge: ./.venv/bin/python -m openpipixia.cli channels bridge start
-  2) Start gateway: ./.venv/bin/python -m openpipixia.cli gateway --channels whatsapp
+  1) Start bridge: ./.venv/bin/python -m openppx.cli channels bridge start
+  2) Start gateway: ./.venv/bin/python -m openppx.cli gateway --channels whatsapp
   3) Send a WhatsApp message to your linked account/group and observe gateway logs.
-  4) Stop gateway (Ctrl+C), then stop bridge: ./.venv/bin/python -m openpipixia.cli channels bridge stop
+  4) Stop gateway (Ctrl+C), then stop bridge: ./.venv/bin/python -m openppx.cli channels bridge stop
 EOF
 }
 

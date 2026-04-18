@@ -7,7 +7,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from openpipixia.gui.mcp_server import (
+from openppx.gui.mcp_server import (
     add_agent_participant,
     build_gui_mcp_server,
     get_agent_access,
@@ -29,7 +29,7 @@ class GuiMcpServerTests(unittest.TestCase):
 
     def test_run_gui_action_delegates(self) -> None:
         expected = {"ok": True, "action": "left_click"}
-        with patch("openpipixia.gui.mcp_server.execute_gui_action", return_value=expected) as mocked:
+        with patch("openppx.gui.mcp_server.execute_gui_action", return_value=expected) as mocked:
             result = run_gui_action(action=" click search box ", dry_run=True)
 
         self.assertEqual(result, expected)
@@ -42,7 +42,7 @@ class GuiMcpServerTests(unittest.TestCase):
         )
 
     def test_run_gui_action_wraps_exceptions(self) -> None:
-        with patch("openpipixia.gui.mcp_server.execute_gui_action", side_effect=RuntimeError("boom")):
+        with patch("openppx.gui.mcp_server.execute_gui_action", side_effect=RuntimeError("boom")):
             result = run_gui_action(action="click")
         self.assertEqual(result["ok"], False)
         self.assertIn("boom", result["error"])
@@ -54,7 +54,7 @@ class GuiMcpServerTests(unittest.TestCase):
 
     def test_run_gui_task_delegates(self) -> None:
         expected = {"ok": True, "finished": False}
-        with patch("openpipixia.gui.mcp_server.execute_gui_task", return_value=expected) as mocked:
+        with patch("openppx.gui.mcp_server.execute_gui_task", return_value=expected) as mocked:
             result = run_gui_task(task="open browser", max_steps=5, dry_run=True)
 
         self.assertEqual(result, expected)
@@ -76,7 +76,7 @@ class GuiMcpServerTests(unittest.TestCase):
         expected = {"ok": True, "data": {"agent": {"id": "writer"}}}
         mocked_coordinator = unittest.mock.Mock()
         mocked_coordinator.get_agent_access.return_value = expected
-        with patch("openpipixia.gui.mcp_server._coordinator_for_data_dir", return_value=mocked_coordinator):
+        with patch("openppx.gui.mcp_server._coordinator_for_data_dir", return_value=mocked_coordinator):
             result = get_agent_access(agent_id="writer", user_id="owner", data_dir="/tmp/demo")
 
         self.assertEqual(result, expected)
@@ -86,7 +86,7 @@ class GuiMcpServerTests(unittest.TestCase):
         expected = {"ok": True}
         mocked_coordinator = unittest.mock.Mock()
         mocked_coordinator.set_agent_owner.return_value = expected
-        with patch("openpipixia.gui.mcp_server._coordinator_for_data_dir", return_value=mocked_coordinator):
+        with patch("openppx.gui.mcp_server._coordinator_for_data_dir", return_value=mocked_coordinator):
             result = set_agent_owner(agent_id="writer", owner_principal_id="root-user", user_id="root-user")
 
         self.assertEqual(result, expected)
@@ -96,7 +96,7 @@ class GuiMcpServerTests(unittest.TestCase):
         expected = {"ok": True, "data": {"items": []}}
         mocked_coordinator = unittest.mock.Mock()
         mocked_coordinator.get_memory_audit.return_value = expected
-        with patch("openpipixia.gui.mcp_server._coordinator_for_data_dir", return_value=mocked_coordinator):
+        with patch("openppx.gui.mcp_server._coordinator_for_data_dir", return_value=mocked_coordinator):
             result = list_agent_memory_audit(agent_id="writer", user_id="owner", limit=25)
 
         self.assertEqual(result, expected)
@@ -106,7 +106,7 @@ class GuiMcpServerTests(unittest.TestCase):
         expected = {"ok": True, "data": {"items": []}}
         mocked_coordinator = unittest.mock.Mock()
         mocked_coordinator.get_access_audit.return_value = expected
-        with patch("openpipixia.gui.mcp_server._coordinator_for_data_dir", return_value=mocked_coordinator):
+        with patch("openppx.gui.mcp_server._coordinator_for_data_dir", return_value=mocked_coordinator):
             result = list_agent_access_audit(agent_id="writer", user_id="owner", limit=10)
 
         self.assertEqual(result, expected)
@@ -116,7 +116,7 @@ class GuiMcpServerTests(unittest.TestCase):
         mocked_coordinator = unittest.mock.Mock()
         mocked_coordinator.upsert_agent_membership.return_value = {"ok": True, "data": {"membership": {}}}
         mocked_coordinator.delete_agent_membership.return_value = {"ok": True, "data": {"deleted": True}}
-        with patch("openpipixia.gui.mcp_server._coordinator_for_data_dir", return_value=mocked_coordinator):
+        with patch("openppx.gui.mcp_server._coordinator_for_data_dir", return_value=mocked_coordinator):
             add_result = add_agent_participant(agent_id="writer", principal_id="alice", user_id="owner")
             remove_result = remove_agent_participant(agent_id="writer", principal_id="alice", user_id="owner")
 
@@ -161,7 +161,7 @@ class GuiMcpServerTests(unittest.TestCase):
             },
             clear=False,
         ):
-            with patch("openpipixia.gui.mcp_server.build_gui_mcp_server") as mocked_builder:
+            with patch("openppx.gui.mcp_server.build_gui_mcp_server") as mocked_builder:
                 main()
 
         mocked_builder.assert_called_once_with(name="gui-server")

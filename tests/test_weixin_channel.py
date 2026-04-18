@@ -10,9 +10,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from openpipixia.bus.events import OutboundMessage
-from openpipixia.bus.queue import MessageBus
-from openpipixia.channels.weixin import WeixinChannel
+from openppx.bus.events import OutboundMessage
+from openppx.bus.queue import MessageBus
+from openppx.channels.weixin import WeixinChannel
 
 
 class WeixinChannelTests(unittest.IsolatedAsyncioTestCase):

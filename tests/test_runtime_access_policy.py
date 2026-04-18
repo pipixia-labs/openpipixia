@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from openpipixia.runtime.access_policy import AccessPolicy
-from openpipixia.runtime.agent_access_store import AgentAccessStore, AgentMembership
-from openpipixia.runtime.identity_models import ResolvedPrincipal
-from openpipixia.runtime.identity_store import IdentityStore
+from openppx.runtime.access_policy import AccessPolicy
+from openppx.runtime.agent_access_store import AgentAccessStore, AgentMembership
+from openppx.runtime.identity_models import ResolvedPrincipal
+from openppx.runtime.identity_store import IdentityStore
 
 
 def _principal(*, principal_id: str, privilege_level: str = "minimal", principal_type: str = "human") -> ResolvedPrincipal:

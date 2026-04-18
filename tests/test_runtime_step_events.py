@@ -6,13 +6,13 @@ import asyncio
 import unittest
 from types import SimpleNamespace
 
-from openpipixia.runtime.step_events import (
+from openppx.runtime.step_events import (
     OpenPpxStepEventPlugin,
     classify_outbound_message,
     configure_step_event_publisher,
     normalize_outbound_metadata,
 )
-from openpipixia.runtime.tool_context import route_context
+from openppx.runtime.tool_context import route_context
 
 
 class StepEventNormalizationTests(unittest.TestCase):

@@ -1,6 +1,6 @@
 <div align="center">
- <img src="assets/openpipixia_logo_3.png" alt="openpipixia" width="500">
-  <h1>OpenPipixia: A Lightweight Personal AI Assistant 🚀</h1>
+ <img src="assets/openppx_logo_3.png" alt="openppx" width="500">
+  <h1>OpenPPX: A Lightweight Personal AI Assistant 🚀</h1>
 </div>
 
 ## ✨ News
@@ -21,8 +21,8 @@
 
 ### 🛠️ 1. Set Up the Environment and Create an Agent
 ```bash
-git clone https://github.com/pipixia-labs/openpipixia
-cd openpipixia
+git clone https://github.com/pipixia-labs/openppx
+cd openppx
 python3.14 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt 
@@ -163,7 +163,7 @@ pip install -e .[weixin]
 
 ## 🖥️ Computer Use
 
-`openpipixia` includes desktop GUI tools.
+`openppx` includes desktop GUI tools.
 Recommended: configure GUI models/providers in `config.json` (`multimodalProviders`, `gui.groundingProvider`, `gui.plannerProvider`).
 
 Minimal `config.json` example:
@@ -199,7 +199,7 @@ GUI smoke examples:
 ./.venv/bin/python scripts/gui_smoke.py --mode single --action "Wait 1 second"
 
 # Multi-step (dry run)
-./.venv/bin/python scripts/gui_smoke.py --mode task --task "Open a browser and search for openpipixia" --max-steps 8 --dry-run
+./.venv/bin/python scripts/gui_smoke.py --mode task --task "Open a browser and search for openppx" --max-steps 8 --dry-run
 ```
 
 macOS permission reminder (required for GUI automation):
@@ -253,11 +253,11 @@ ppx disable low-main
 ppx delete low-main
 
 # Single-turn call
-python -m openpipixia.cli -m "Describe what you can do"
-python -m openpipixia.cli -m "Describe what you can do" --user-id local --session-id demo001
+python -m openppx.cli -m "Describe what you can do"
+python -m openppx.cli -m "Describe what you can do" --user-id local --session-id demo001
 
 # Local interactive gateway
-python -m openpipixia.cli gateway run --channels local --interactive-local
+python -m openppx.cli gateway run --channels local --interactive-local
 
 # Multi-channel runtime
 ppx gateway run --channels local,feishu --interactive-local
@@ -281,7 +281,7 @@ openppx_root/
 │   ├── OPERATIONS.md
 │   ├── PROJECT_OVERVIEW.md
 │   └── README.md
-├── openpipixia/
+├── openppx/
 │   ├── app/
 │   ├── bridge/
 │   ├── browser/
@@ -325,10 +325,10 @@ Then inspect `fix.reasonCodes` and `fix.byRule`
 
 ## 🧹 Uninstall
 
-Run this in the same Python environment where `openpipixia` was installed:
+Run this in the same Python environment where `openppx` was installed:
 
 ```bash
-pip uninstall openpipixia
+pip uninstall openppx
 ```
 
 This removes only the Python package and CLI entrypoint.

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Minimal smoke runner for openpipixia GUI tools.
+"""Minimal smoke runner for openppx GUI tools.
 
 Usage:
   python scripts/gui_smoke.py --mode single --action "click browser icon"
-  python scripts/gui_smoke.py --mode task --task "open browser and search openpipixia"
+  python scripts/gui_smoke.py --mode task --task "open browser and search openppx"
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ import tempfile
 import time
 from pathlib import Path
 
-from openpipixia.core.config import bootstrap_env_from_config, get_data_dir, get_config_path
-from openpipixia.tooling.registry import computer_task, computer_use
+from openppx.core.config import bootstrap_env_from_config, get_data_dir, get_config_path
+from openppx.tooling.registry import computer_task, computer_use
 
 
 def _global_config_path() -> Path:
@@ -85,7 +85,7 @@ def _enable_debug_log(explicit_path: str = "") -> str:
     path = explicit_path.strip()
     if not path:
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        path = os.path.join(tempfile.gettempdir(), f"openpipixia-gui-smoke-{stamp}.debug.log")
+        path = os.path.join(tempfile.gettempdir(), f"openppx-gui-smoke-{stamp}.debug.log")
     os.environ["OPENPPX_DEBUG"] = "1"
     os.environ["OPENPPX_DEBUG_LOG_PATH"] = path
     return path
@@ -133,7 +133,7 @@ def _print_payload_summary(payload: dict[str, object]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Smoke test for openpipixia GUI automation tools.")
+    parser = argparse.ArgumentParser(description="Smoke test for openppx GUI automation tools.")
     parser.add_argument("--mode", choices=["single", "task"], default="single")
     parser.add_argument("--action", default="", help="Single-step action text for computer_use.")
     parser.add_argument("--task", default="", help="Multi-step task text for computer_task.")

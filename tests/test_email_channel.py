@@ -6,9 +6,9 @@ import asyncio
 import unittest
 from unittest.mock import patch
 
-from openpipixia.bus.events import OutboundMessage
-from openpipixia.bus.queue import MessageBus
-from openpipixia.channels.email import EmailChannel
+from openppx.bus.events import OutboundMessage
+from openppx.bus.queue import MessageBus
+from openppx.channels.email import EmailChannel
 
 
 class EmailChannelTests(unittest.IsolatedAsyncioTestCase):

@@ -5,8 +5,8 @@ from __future__ import annotations
 import unittest
 import unittest.mock
 
-from openpipixia.gui.executor import CapturedScreen
-from openpipixia.gui.task_runner import GuiTaskRunner, execute_gui_task
+from openppx.gui.executor import CapturedScreen
+from openppx.gui.task_runner import GuiTaskRunner, execute_gui_task
 
 
 class _FakeRuntime:
@@ -29,7 +29,7 @@ class GuiTaskRunnerTests(unittest.TestCase):
         with unittest.mock.patch("google.adk.models.lite_llm.LiteLlm") as mocked_litellm:
             with unittest.mock.patch("google.adk.agents.LlmAgent") as mocked_agent:
                 with unittest.mock.patch(
-                    "openpipixia.runtime.runner_factory.create_runner",
+                    "openppx.runtime.runner_factory.create_runner",
                     return_value=(object(), None),
                 ):
                     GuiTaskRunner._build_adk_planner_runner(
@@ -47,7 +47,7 @@ class GuiTaskRunnerTests(unittest.TestCase):
             mocked_litellm.return_value = object()
             with unittest.mock.patch("google.adk.agents.LlmAgent"):
                 with unittest.mock.patch(
-                    "openpipixia.runtime.runner_factory.create_runner",
+                    "openppx.runtime.runner_factory.create_runner",
                     return_value=(object(), None),
                 ):
                     GuiTaskRunner._build_adk_planner_runner(
@@ -184,7 +184,7 @@ class GuiTaskRunnerTests(unittest.TestCase):
             "_plan_next_adk_async",
             new=unittest.mock.AsyncMock(side_effect=planned),
         ):
-            result = runner.run("search openpipixia", max_steps=5)
+            result = runner.run("search openppx", max_steps=5)
         self.assertFalse(result["ok"])
         self.assertEqual(result["status_code"], "no_progress")
         self.assertEqual(result["last_error_type"], "no_progress_stall")
@@ -225,8 +225,8 @@ class GuiTaskRunnerTests(unittest.TestCase):
             runtime=_FakeRuntime(),
         )
         messages = runner._messages(  # type: ignore[attr-defined]
-            task="打开浏览器并搜索 openpipixia",
-            current_plan="打开浏览器并搜索 openpipixia",
+            task="打开浏览器并搜索 openppx",
+            current_plan="打开浏览器并搜索 openppx",
             saved_info={},
             history=[],
             screen=CapturedScreen(
@@ -260,8 +260,8 @@ class GuiTaskRunnerTests(unittest.TestCase):
             }
         ]
         messages = runner._messages(  # type: ignore[attr-defined]
-            task="打开浏览器并搜索 openpipixia",
-            current_plan="打开浏览器并搜索 openpipixia",
+            task="打开浏览器并搜索 openppx",
+            current_plan="打开浏览器并搜索 openppx",
             saved_info={},
             history=history,
             screen=CapturedScreen(
@@ -285,7 +285,7 @@ class GuiTaskRunnerTests(unittest.TestCase):
             def run(self, task: str, *, max_steps: int = 8, dry_run: bool = False) -> dict[str, object]:
                 return {"ok": True, "task": task, "max_steps": max_steps, "dry_run": dry_run}
 
-        with unittest.mock.patch("openpipixia.gui.task_runner.GuiTaskRunner", _FakeRunner):
+        with unittest.mock.patch("openppx.gui.task_runner.GuiTaskRunner", _FakeRunner):
             with unittest.mock.patch.dict(
                 "os.environ",
                 {

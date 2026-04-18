@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from openpipixia.runtime.agent_access_store import AgentAccessStore
+from openppx.runtime.agent_access_store import AgentAccessStore
 
 
 def test_agent_access_store_records_and_lists_audit_rows(tmp_path) -> None:

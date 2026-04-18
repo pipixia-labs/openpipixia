@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from openpipixia.core.security import (
+from openppx.core.security import (
     PathGuard,
     SecurityPolicy,
     load_security_policy,

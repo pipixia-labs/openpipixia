@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from openpipixia.browser.schema import (
+from openppx.browser.schema import (
     apply_status_metadata,
     build_action_guidance,
     make_profile_entry,
@@ -49,7 +49,7 @@ class BrowserSchemaTests(unittest.TestCase):
 
     def test_make_profile_entry_with_optional_metadata(self) -> None:
         entry = make_profile_entry(
-            name="openpipixia",
+            name="openppx",
             driver="playwright",
             description="Runtime profile",
             available=True,
@@ -63,7 +63,7 @@ class BrowserSchemaTests(unittest.TestCase):
 
     def test_apply_status_metadata(self) -> None:
         payload = apply_status_metadata(
-            {"running": True, "profile": "openpipixia"},
+            {"running": True, "profile": "openppx"},
             attach_mode="launch-or-cdp",
             browser_owned=True,
             context_owned=False,
@@ -75,7 +75,7 @@ class BrowserSchemaTests(unittest.TestCase):
     def test_normalize_status_aliases(self) -> None:
         payload = normalize_profile_payload_aliases(
             {
-                "profile": "openpipixia",
+                "profile": "openppx",
                 "attachMode": "launch-or-cdp",
                 "browserOwned": True,
                 "contextOwned": False,

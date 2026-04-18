@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import unittest
 
-from openpipixia.bus.events import OutboundMessage
-from openpipixia.bus.queue import MessageBus
-from openpipixia.channels.base import BaseChannel
-from openpipixia.channels.manager import ChannelManager
+from openppx.bus.events import OutboundMessage
+from openppx.bus.queue import MessageBus
+from openppx.channels.base import BaseChannel
+from openppx.channels.manager import ChannelManager
 
 
 class _FlakyChannel(BaseChannel):

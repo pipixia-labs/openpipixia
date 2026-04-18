@@ -6,7 +6,7 @@ import unittest
 import unittest.mock
 from pathlib import Path
 
-from openpipixia.gui.executor import CapturedScreen, GroundingExecutor, PyAutoGuiRuntime, execute_gui_action
+from openppx.gui.executor import CapturedScreen, GroundingExecutor, PyAutoGuiRuntime, execute_gui_action
 
 
 class _FakeRuntime:
@@ -44,8 +44,8 @@ class GuiExecutorTests(unittest.TestCase):
             def grab():
                 return _FakeShot()
 
-        with unittest.mock.patch("openpipixia.gui.executor._load_pyautogui", return_value=None):
-            with unittest.mock.patch("openpipixia.gui.executor._load_image_grab", return_value=_FakeImageGrab()):
+        with unittest.mock.patch("openppx.gui.executor._load_pyautogui", return_value=None):
+            with unittest.mock.patch("openppx.gui.executor._load_image_grab", return_value=_FakeImageGrab()):
                 runtime = PyAutoGuiRuntime()
                 captured = runtime.capture()
         self.assertEqual(captured.width, 1920)
@@ -65,7 +65,7 @@ class GuiExecutorTests(unittest.TestCase):
                 self.clicked = (x, y)
 
         fake_pyautogui = _FakeAutoGui()
-        with unittest.mock.patch("openpipixia.gui.executor._load_pyautogui", return_value=fake_pyautogui):
+        with unittest.mock.patch("openppx.gui.executor._load_pyautogui", return_value=fake_pyautogui):
             runtime = PyAutoGuiRuntime(pyperclip_module=object())
             runtime.perform({"action": "left_click", "coordinate": [10, 10]})
 
@@ -75,7 +75,7 @@ class GuiExecutorTests(unittest.TestCase):
         with unittest.mock.patch("google.adk.models.lite_llm.LiteLlm") as mocked_litellm:
             with unittest.mock.patch("google.adk.agents.LlmAgent") as mocked_agent:
                 with unittest.mock.patch(
-                    "openpipixia.runtime.runner_factory.create_runner",
+                    "openppx.runtime.runner_factory.create_runner",
                     return_value=(object(), None),
                 ):
                     GroundingExecutor._build_adk_grounding_runner(
@@ -93,7 +93,7 @@ class GuiExecutorTests(unittest.TestCase):
             mocked_litellm.return_value = object()
             with unittest.mock.patch("google.adk.agents.LlmAgent"):
                 with unittest.mock.patch(
-                    "openpipixia.runtime.runner_factory.create_runner",
+                    "openppx.runtime.runner_factory.create_runner",
                     return_value=(object(), None),
                 ):
                     GroundingExecutor._build_adk_grounding_runner(
@@ -180,7 +180,7 @@ class GuiExecutorTests(unittest.TestCase):
             max_wait_seconds=0.1,
         )
 
-        with unittest.mock.patch("openpipixia.gui.executor.time.sleep") as mocked_sleep:
+        with unittest.mock.patch("openppx.gui.executor.time.sleep") as mocked_sleep:
             runtime.perform({"action": "wait", "time": 8})
         mocked_sleep.assert_called_once_with(0.1)
 
@@ -300,7 +300,7 @@ class GuiExecutorTests(unittest.TestCase):
             def run(self, action: str, *, dry_run: bool = False) -> dict[str, object]:
                 return {"ok": True, "action": action, "dry_run": dry_run}
 
-        with unittest.mock.patch("openpipixia.gui.executor.GroundingExecutor", _FakeExecutor):
+        with unittest.mock.patch("openppx.gui.executor.GroundingExecutor", _FakeExecutor):
             with unittest.mock.patch.dict(
                 "os.environ",
                 {

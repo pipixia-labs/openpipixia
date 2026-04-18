@@ -10,8 +10,8 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from openpipixia.tooling.skills_adapter import read_skill
-from openpipixia.tooling.registry import read_file, web_fetch, write_file
+from openppx.tooling.skills_adapter import read_skill
+from openppx.tooling.registry import read_file, web_fetch, write_file
 
 
 def _create_simple_docx(path: Path, text: str) -> None:
@@ -103,7 +103,7 @@ class ScenarioTests(unittest.TestCase):
             def __exit__(self, exc_type, exc, tb):
                 return False
 
-        with patch("openpipixia.tooling.registry.urlopen", return_value=_FakeResponse()):
+        with patch("openppx.tooling.registry.urlopen", return_value=_FakeResponse()):
             data = json.loads(
                 web_fetch(
                     "https://api.open-meteo.com/v1/forecast?latitude=37.513&longitude=122.12&current=temperature_2m,weather_code"

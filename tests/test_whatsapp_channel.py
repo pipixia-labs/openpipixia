@@ -8,9 +8,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from openpipixia.bus.events import OutboundMessage
-from openpipixia.bus.queue import MessageBus
-from openpipixia.channels.whatsapp import WhatsAppChannel
+from openppx.bus.events import OutboundMessage
+from openppx.bus.queue import MessageBus
+from openppx.channels.whatsapp import WhatsAppChannel
 
 
 class WhatsAppChannelTests(unittest.IsolatedAsyncioTestCase):

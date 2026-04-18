@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from openpipixia.runtime.heartbeat_status_store import (
+from openppx.runtime.heartbeat_status_store import (
     heartbeat_status_path,
     read_heartbeat_status_snapshot,
     write_heartbeat_status_snapshot,
@@ -23,7 +23,7 @@ class HeartbeatStatusStoreTests(unittest.TestCase):
 
         self.assertEqual(loaded, payload)
 
-    def test_path_is_under_openpipixia_runtime_dir(self) -> None:
+    def test_path_is_under_openppx_runtime_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             path = heartbeat_status_path(workspace)

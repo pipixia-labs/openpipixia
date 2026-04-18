@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import unittest
 
-from openpipixia.bus.events import OutboundMessage
-from openpipixia.bus.queue import MessageBus
-from openpipixia.channels.local import LocalChannel
+from openppx.bus.events import OutboundMessage
+from openppx.bus.queue import MessageBus
+from openppx.channels.local import LocalChannel
 
 
 class LocalChannelTests(unittest.IsolatedAsyncioTestCase):

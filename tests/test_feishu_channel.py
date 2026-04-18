@@ -9,9 +9,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from openpipixia.bus.events import OutboundMessage
-from openpipixia.bus.queue import MessageBus
-from openpipixia.channels.feishu import FeishuChannel
+from openppx.bus.events import OutboundMessage
+from openppx.bus.queue import MessageBus
+from openppx.channels.feishu import FeishuChannel
 
 
 class FeishuChannelTests(unittest.IsolatedAsyncioTestCase):

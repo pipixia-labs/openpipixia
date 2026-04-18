@@ -8,11 +8,11 @@ from unittest.mock import patch
 
 from google.adk.plugins.save_files_as_artifacts_plugin import SaveFilesAsArtifactsPlugin
 
-from openpipixia.runtime.runner_factory import (
+from openppx.runtime.runner_factory import (
     _build_events_compaction_config,
     create_runner,
 )
-from openpipixia.runtime.step_events import OpenPpxStepEventPlugin
+from openppx.runtime.step_events import OpenPpxStepEventPlugin
 
 
 class RunnerFactoryTests(unittest.TestCase):
@@ -64,13 +64,13 @@ class RunnerFactoryTests(unittest.TestCase):
         fake_agent = object()
         sentinel_app = object()
 
-        with patch("openpipixia.runtime.runner_factory.create_memory_service", return_value=sentinel_memory):
-            with patch("openpipixia.runtime.runner_factory.create_artifact_service", return_value=sentinel_artifacts):
-                with patch("openpipixia.runtime.runner_factory.App", return_value=sentinel_app) as mocked_app:
-                    with patch("openpipixia.runtime.runner_factory.Runner", return_value=sentinel_runner) as mocked:
+        with patch("openppx.runtime.runner_factory.create_memory_service", return_value=sentinel_memory):
+            with patch("openppx.runtime.runner_factory.create_artifact_service", return_value=sentinel_artifacts):
+                with patch("openppx.runtime.runner_factory.App", return_value=sentinel_app) as mocked_app:
+                    with patch("openppx.runtime.runner_factory.Runner", return_value=sentinel_runner) as mocked:
                         runner, session_service = create_runner(
                             agent=fake_agent,
-                            app_name="openpipixia_test",
+                            app_name="openppx_test",
                             session_service=sentinel_session_service,
                         )
 

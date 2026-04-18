@@ -15,19 +15,19 @@ from google.adk.agents import LlmAgent
 from google.adk.agents.run_config import StreamingMode
 from google.adk.tools import LongRunningFunctionTool
 
-from openpipixia.bus.events import InboundMessage, OutboundMessage
-from openpipixia.bus.queue import MessageBus
-from openpipixia.app.gateway import Gateway
-from openpipixia.runtime.agent_access_store import AgentAccessStore
-from openpipixia.runtime.cron_service import CronJob, CronJobState, CronPayload, CronSchedule
-from openpipixia.runtime.heartbeat_runner import HeartbeatRunRequest
-from openpipixia.runtime.heartbeat_status_store import read_heartbeat_status_snapshot
-from openpipixia.runtime.heartbeat_utils import DEFAULT_HEARTBEAT_PROMPT
-from openpipixia.runtime.identity_store import IdentityStore
-from openpipixia.tooling.registry import SubagentSpawnRequest
+from openppx.bus.events import InboundMessage, OutboundMessage
+from openppx.bus.queue import MessageBus
+from openppx.app.gateway import Gateway
+from openppx.runtime.agent_access_store import AgentAccessStore
+from openppx.runtime.cron_service import CronJob, CronJobState, CronPayload, CronSchedule
+from openppx.runtime.heartbeat_runner import HeartbeatRunRequest
+from openppx.runtime.heartbeat_status_store import read_heartbeat_status_snapshot
+from openppx.runtime.heartbeat_utils import DEFAULT_HEARTBEAT_PROMPT
+from openppx.runtime.identity_store import IdentityStore
+from openppx.tooling.registry import SubagentSpawnRequest
 
 _LOCAL_PRINCIPAL_ID = "human:local:u1"
-_LOCAL_SESSION_ID = "openpipixia:local:c1:human:local:u1"
+_LOCAL_SESSION_ID = "openppx:local:c1:human:local:u1"
 
 
 class MessageBusTests(unittest.IsolatedAsyncioTestCase):
@@ -67,9 +67,9 @@ class GatewayTests(unittest.TestCase):
                 yield fake_event_1
                 yield fake_event_2
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
             inbound = InboundMessage(
                 channel="local",
                 sender_id="u1",
@@ -107,11 +107,11 @@ class GatewayTests(unittest.TestCase):
             db_path = Path(tmpdir) / "identity.db"
             identity_store = IdentityStore(db_path=db_path)
             access_store = AgentAccessStore(db_path=db_path)
-            fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-            with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            fake_agent = pytypes.SimpleNamespace(name="openppx")
+            with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
                 gateway = Gateway(
                     agent=fake_agent,
-                    app_name="openpipixia",
+                    app_name="openppx",
                     bus=MessageBus(),
                     identity_store=identity_store,
                     agent_access_store=access_store,
@@ -121,16 +121,16 @@ class GatewayTests(unittest.TestCase):
 
             context = captured["state_delta"]["temp:_openppx:ctx"]
             membership = access_store.get_membership(
-                agent_id="openpipixia",
+                agent_id="openppx",
                 principal_id=_LOCAL_PRINCIPAL_ID,
             )
-            record = access_store.get_agent_record("openpipixia")
+            record = access_store.get_agent_record("openppx")
 
         self.assertEqual(context["requester_relation_to_agent"], "participant")
         self.assertIsNotNone(membership)
         self.assertEqual(membership.relation, "participant")
         self.assertIsNotNone(record)
-        self.assertEqual(record.agent_id, "openpipixia")
+        self.assertEqual(record.agent_id, "openppx")
 
     def test_process_message_sets_owner_relation_when_owner_record_exists(self) -> None:
         fake_event = pytypes.SimpleNamespace(
@@ -147,12 +147,12 @@ class GatewayTests(unittest.TestCase):
             db_path = Path(tmpdir) / "identity.db"
             identity_store = IdentityStore(db_path=db_path)
             access_store = AgentAccessStore(db_path=db_path)
-            access_store.set_agent_owner(agent_id="openpipixia", owner_principal_id=_LOCAL_PRINCIPAL_ID)
-            fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-            with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            access_store.set_agent_owner(agent_id="openppx", owner_principal_id=_LOCAL_PRINCIPAL_ID)
+            fake_agent = pytypes.SimpleNamespace(name="openppx")
+            with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
                 gateway = Gateway(
                     agent=fake_agent,
-                    app_name="openpipixia",
+                    app_name="openppx",
                     bus=MessageBus(),
                     identity_store=identity_store,
                     agent_access_store=access_store,
@@ -178,14 +178,14 @@ class GatewayTests(unittest.TestCase):
             db_path = Path(tmpdir) / "identity.db"
             identity_store = IdentityStore(db_path=db_path)
             access_store = AgentAccessStore(db_path=db_path)
-            fake_agent = pytypes.SimpleNamespace(name="openpipixia")
+            fake_agent = pytypes.SimpleNamespace(name="openppx")
             with (
                 patch.dict(os.environ, {"OPENPPX_AGENT_OWNER_PRINCIPAL_ID": _LOCAL_PRINCIPAL_ID}, clear=False),
-                patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())),
+                patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())),
             ):
                 gateway = Gateway(
                     agent=fake_agent,
-                    app_name="openpipixia",
+                    app_name="openppx",
                     bus=MessageBus(),
                     identity_store=identity_store,
                     agent_access_store=access_store,
@@ -194,7 +194,7 @@ class GatewayTests(unittest.TestCase):
                 asyncio.run(gateway.process_message(inbound))
 
             context = captured["state_delta"]["temp:_openppx:ctx"]
-            record = access_store.get_agent_record("openpipixia")
+            record = access_store.get_agent_record("openppx")
 
         self.assertEqual(context["requester_relation_to_agent"], "owner")
         self.assertIsNotNone(record)
@@ -214,9 +214,9 @@ class GatewayTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             media_path = Path(tmpdir) / "sample.txt"
             media_path.write_text("hello from file", encoding="utf-8")
-            fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-            with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-                gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+            fake_agent = pytypes.SimpleNamespace(name="openppx")
+            with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+                gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
                 inbound = InboundMessage(
                     channel="local",
                     sender_id="u1",
@@ -246,9 +246,9 @@ class GatewayTests(unittest.TestCase):
                 yield fake_event_1
                 yield fake_event_2
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
             inbound = InboundMessage(channel="local", sender_id="u1", chat_id="c1", content="hello")
             outbound = asyncio.run(gateway.process_message(inbound))
 
@@ -271,9 +271,9 @@ class GatewayTests(unittest.TestCase):
 
         async def _run() -> tuple[OutboundMessage, list[OutboundMessage]]:
             bus = MessageBus()
-            fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-            with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-                gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=bus)
+            fake_agent = pytypes.SimpleNamespace(name="openppx")
+            with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+                gateway = Gateway(agent=fake_agent, app_name="openppx", bus=bus)
                 inbound = InboundMessage(
                     channel="local",
                     sender_id="u1",
@@ -321,9 +321,9 @@ class GatewayTests(unittest.TestCase):
 
         async def _run() -> tuple[OutboundMessage, list[OutboundMessage]]:
             bus = MessageBus()
-            fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-            with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-                gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=bus)
+            fake_agent = pytypes.SimpleNamespace(name="openppx")
+            with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+                gateway = Gateway(agent=fake_agent, app_name="openppx", bus=bus)
                 inbound = InboundMessage(
                     channel="local",
                     sender_id="u1",
@@ -359,9 +359,9 @@ class GatewayTests(unittest.TestCase):
                 captured_calls.append(kwargs)
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
             inbound = InboundMessage(channel="local", sender_id="u1", chat_id="c1", content="/help")
             outbound = asyncio.run(gateway.process_message(inbound))
 
@@ -380,9 +380,9 @@ class GatewayTests(unittest.TestCase):
                 captured_calls.append(kwargs)
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
 
             first = InboundMessage(channel="local", sender_id="u1", chat_id="c1", content="hello")
             first_outbound = asyncio.run(gateway.process_message(first))
@@ -418,21 +418,21 @@ class GatewayTests(unittest.TestCase):
             async def run_async(self, **kwargs):
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
         with patch(
-            "openpipixia.app.gateway.create_runner",
+            "openppx.app.gateway.create_runner",
             side_effect=[
-                (_FakeRunner(memory_service=memory_service, app_name="openpipixia"), session_service),
-                (_FakeRunner(memory_service=memory_service, app_name="openpipixia"), session_service),
+                (_FakeRunner(memory_service=memory_service, app_name="openppx"), session_service),
+                (_FakeRunner(memory_service=memory_service, app_name="openppx"), session_service),
             ],
         ):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
             inbound = InboundMessage(channel="local", sender_id="u1", chat_id="c1", content="/new")
             outbound = asyncio.run(gateway.process_message(inbound))
 
         self.assertEqual(outbound.content, "Started a new conversation session.")
         session_service.get_session.assert_awaited_once_with(
-            app_name="openpipixia",
+            app_name="openppx",
             user_id=_LOCAL_PRINCIPAL_ID,
             session_id=_LOCAL_SESSION_ID,
         )
@@ -446,10 +446,10 @@ class GatewayLoopResilienceTests(unittest.IsolatedAsyncioTestCase):
                 if False:
                     yield  # pragma: no cover
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
             bus = MessageBus()
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=bus)
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=bus)
 
         success_outbound = OutboundMessage(channel="local", chat_id="c2", content="ok")
         gateway.process_message = AsyncMock(side_effect=[RuntimeError("boom"), success_outbound])  # type: ignore[method-assign]
@@ -475,17 +475,17 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
                 if False:
                     yield  # pragma: no cover
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
         fake_cron_service = pytypes.SimpleNamespace(start=AsyncMock(), stop=Mock())
         fake_heartbeat_runner = pytypes.SimpleNamespace(start=AsyncMock(), stop=AsyncMock())
         heartbeat_waker = Mock()
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
             with (
-                patch("openpipixia.app.gateway.CronService", return_value=fake_cron_service),
-                patch("openpipixia.app.gateway.HeartbeatRunner", return_value=fake_heartbeat_runner),
-                patch("openpipixia.app.gateway.configure_heartbeat_waker", heartbeat_waker),
+                patch("openppx.app.gateway.CronService", return_value=fake_cron_service),
+                patch("openppx.app.gateway.HeartbeatRunner", return_value=fake_heartbeat_runner),
+                patch("openppx.app.gateway.configure_heartbeat_waker", heartbeat_waker),
             ):
-                gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+                gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
                 await gateway.start()
                 fake_cron_service.start.assert_awaited_once()
                 fake_heartbeat_runner.start.assert_awaited_once()
@@ -506,9 +506,9 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
                 captured.update(kwargs)
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
 
         req = HeartbeatRunRequest(reason="manual", prompt="ops check")
         await gateway._run_heartbeat(req)
@@ -529,14 +529,14 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
                 if False:
                     yield  # pragma: no cover
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
 
         req = HeartbeatRunRequest(reason="interval", prompt=DEFAULT_HEARTBEAT_PROMPT)
         with tempfile.TemporaryDirectory() as tmp:
             policy = pytypes.SimpleNamespace(workspace_root=Path(tmp))
-            with patch("openpipixia.app.gateway.load_security_policy", return_value=policy):
+            with patch("openppx.app.gateway.load_security_policy", return_value=policy):
                 await gateway._run_heartbeat(req)
 
         self.assertFalse(called)
@@ -554,9 +554,9 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
                 if False:
                     yield  # pragma: no cover
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
 
         req = HeartbeatRunRequest(reason="interval", prompt=DEFAULT_HEARTBEAT_PROMPT)
         with tempfile.TemporaryDirectory() as tmp:
@@ -567,7 +567,7 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
             (agent_home / "HEARTBEAT.md").write_text("\n  \n", encoding="utf-8")
             policy = pytypes.SimpleNamespace(workspace_root=workspace)
             with (
-                patch("openpipixia.app.gateway.load_security_policy", return_value=policy),
+                patch("openppx.app.gateway.load_security_policy", return_value=policy),
                 patch.dict(os.environ, {"OPENPPX_AGENT_HOME": str(agent_home)}, clear=False),
             ):
                 await gateway._run_heartbeat(req)
@@ -586,10 +586,10 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
             async def run_async(self, **kwargs):
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
             bus = MessageBus()
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=bus)
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=bus)
 
         req = HeartbeatRunRequest(reason="interval", prompt="ops check")
         with patch.dict(os.environ, {"OPENPPX_HEARTBEAT_SHOW_OK": "0"}, clear=False):
@@ -606,10 +606,10 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
             async def run_async(self, **kwargs):
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
             bus = MessageBus()
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=bus)
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=bus)
 
         req = HeartbeatRunRequest(reason="interval", prompt="ops check")
         with patch.dict(os.environ, {"OPENPPX_HEARTBEAT_SHOW_OK": "1"}, clear=False):
@@ -628,10 +628,10 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
             async def run_async(self, **kwargs):
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
             bus = MessageBus()
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=bus)
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=bus)
 
         req = HeartbeatRunRequest(reason="interval", prompt="ops check")
         with patch.dict(
@@ -669,10 +669,10 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
             async def run_async(self, **kwargs):
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
             bus = MessageBus()
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=bus)
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=bus)
         gateway._last_inbound_route = ("feishu", "chat-ops")
 
         req = HeartbeatRunRequest(reason="manual", prompt="ops check")
@@ -693,10 +693,10 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
             async def run_async(self, **kwargs):
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
             bus = MessageBus()
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=bus)
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=bus)
 
         req = HeartbeatRunRequest(reason="manual", prompt="ops check")
         with patch.dict(os.environ, {"OPENPPX_HEARTBEAT_TARGET": "none"}, clear=False):
@@ -713,10 +713,10 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
             async def run_async(self, **kwargs):
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
             bus = MessageBus()
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=bus)
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=bus)
 
         req = HeartbeatRunRequest(reason="interval", prompt="ops check")
         with patch.dict(
@@ -744,9 +744,9 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
             async def run_async(self, **kwargs):
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
 
         req = HeartbeatRunRequest(reason="manual", prompt="ops check")
         with patch.dict(
@@ -778,14 +778,14 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
             async def run_async(self, **kwargs):
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
 
         req = HeartbeatRunRequest(reason="manual", prompt="ops check")
         with tempfile.TemporaryDirectory() as tmp:
             policy = pytypes.SimpleNamespace(workspace_root=Path(tmp))
-            with patch("openpipixia.app.gateway.load_security_policy", return_value=policy):
+            with patch("openppx.app.gateway.load_security_policy", return_value=policy):
                 with patch.dict(os.environ, {"OPENPPX_HEARTBEAT_SHOW_OK": "1"}, clear=False):
                     await gateway._run_heartbeat(req)
                 snapshot = read_heartbeat_status_snapshot(Path(tmp))
@@ -800,9 +800,9 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
                 if False:
                     yield  # pragma: no cover
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
 
         status = gateway.heartbeat_status()
         self.assertFalse(bool(status["running"]))
@@ -820,10 +820,10 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
                 captured.update(kwargs)
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
             bus = MessageBus()
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=bus)
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=bus)
 
         job = CronJob(
             id="job12345",
@@ -863,9 +863,9 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
             async def run_async(self, **kwargs):
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
 
         fake_heartbeat_runner = pytypes.SimpleNamespace(request_wake=Mock())
         gateway._heartbeat_runner = fake_heartbeat_runner
@@ -892,9 +892,9 @@ class GatewayCronTests(unittest.IsolatedAsyncioTestCase):
             async def run_async(self, **kwargs):
                 yield fake_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=MessageBus())
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=MessageBus())
 
         job = CronJob(
             id="job12345",
@@ -928,10 +928,10 @@ class GatewaySubagentTests(unittest.IsolatedAsyncioTestCase):
                 else:
                     yield subagent_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
             bus = MessageBus()
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=bus)
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=bus)
 
         request = SubagentSpawnRequest(
             task_id="subagent-abc",
@@ -980,10 +980,10 @@ class GatewaySubagentTests(unittest.IsolatedAsyncioTestCase):
                 else:
                     yield subagent_event
 
-        fake_agent = pytypes.SimpleNamespace(name="openpipixia")
-        with patch("openpipixia.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
+        fake_agent = pytypes.SimpleNamespace(name="openppx")
+        with patch("openppx.app.gateway.create_runner", return_value=(_FakeRunner(), object())):
             bus = MessageBus()
-            gateway = Gateway(agent=fake_agent, app_name="openpipixia", bus=bus)
+            gateway = Gateway(agent=fake_agent, app_name="openppx", bus=bus)
 
         request = SubagentSpawnRequest(
             task_id="subagent-def",
@@ -1013,7 +1013,7 @@ class GatewaySubagentTests(unittest.IsolatedAsyncioTestCase):
             return {"status": "pending", "task_id": "x"}
 
         root = LlmAgent(
-            name="openpipixia",
+            name="openppx",
             model="gemini-2.0-flash",
             instruction="test",
             tools=[
@@ -1033,7 +1033,7 @@ class GatewaySubagentTests(unittest.IsolatedAsyncioTestCase):
             created_agents.append(agent)
             return _FakeRunner(), object()
 
-        with patch("openpipixia.app.gateway.create_runner", side_effect=_create_runner_side_effect):
+        with patch("openppx.app.gateway.create_runner", side_effect=_create_runner_side_effect):
             Gateway(agent=root, app_name=root.name, bus=MessageBus())
 
         self.assertEqual(len(created_agents), 2)

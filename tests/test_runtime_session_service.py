@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from openpipixia.runtime.session_service import (
+from openppx.runtime.session_service import (
     SessionConfig,
     create_session_service,
     load_session_config,
@@ -39,7 +39,7 @@ class SessionServiceFactoryTests(unittest.TestCase):
         cfg = load_session_config()
         self.assertEqual(cfg.db_url, db_url)
 
-    def test_load_defaults_follow_openpipixia_data_dir_when_set(self) -> None:
+    def test_load_defaults_follow_openppx_data_dir_when_set(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             os.environ["OPENPPX_DATA_DIR"] = str(Path(tmp) / "agent_a")
             os.environ.pop("OPENPPX_SESSION_DB_URL", None)
@@ -51,7 +51,7 @@ class SessionServiceFactoryTests(unittest.TestCase):
 
     def test_create_sqlite_backend_uses_db_url(self) -> None:
         db_url = "sqlite+aiosqlite:////tmp/sessions.db"
-        with patch("openpipixia.runtime.session_service.DatabaseSessionService") as mocked:
+        with patch("openppx.runtime.session_service.DatabaseSessionService") as mocked:
             mocked.return_value = object()
             out = create_session_service(SessionConfig(db_url=db_url))
             self.assertIsNotNone(out)

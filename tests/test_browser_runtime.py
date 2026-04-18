@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from openpipixia.browser.runtime import (
+from openppx.browser.runtime import (
     BrowserRuntimeError,
     InMemoryBrowserRuntime,
     configure_browser_runtime,
@@ -36,7 +36,7 @@ class BrowserRuntimeTests(unittest.TestCase):
 
     def test_playwright_mode_falls_back_to_memory_when_adapter_fails(self) -> None:
         os.environ["OPENPPX_BROWSER_RUNTIME"] = "playwright"
-        with patch("openpipixia.browser.runtime._create_playwright_runtime", side_effect=RuntimeError("boom")):
+        with patch("openppx.browser.runtime._create_playwright_runtime", side_effect=RuntimeError("boom")):
             configure_browser_runtime(None)
             runtime = get_browser_runtime()
         self.assertIsInstance(runtime, InMemoryBrowserRuntime)
@@ -44,14 +44,14 @@ class BrowserRuntimeTests(unittest.TestCase):
     def test_playwright_mode_strict_raises_when_adapter_fails(self) -> None:
         os.environ["OPENPPX_BROWSER_RUNTIME"] = "playwright"
         os.environ["OPENPPX_BROWSER_RUNTIME_STRICT"] = "1"
-        with patch("openpipixia.browser.runtime._create_playwright_runtime", side_effect=RuntimeError("boom")):
+        with patch("openppx.browser.runtime._create_playwright_runtime", side_effect=RuntimeError("boom")):
             with self.assertRaises(RuntimeError):
                 configure_browser_runtime(None)
 
     def test_playwright_mode_uses_adapter_when_available(self) -> None:
         os.environ["OPENPPX_BROWSER_RUNTIME"] = "playwright"
         sentinel = InMemoryBrowserRuntime()
-        with patch("openpipixia.browser.runtime._create_playwright_runtime", return_value=sentinel):
+        with patch("openppx.browser.runtime._create_playwright_runtime", return_value=sentinel):
             configure_browser_runtime(None)
             runtime = get_browser_runtime()
         self.assertIs(runtime, sentinel)
@@ -90,13 +90,13 @@ class BrowserRuntimeTests(unittest.TestCase):
 
     def test_in_memory_runtime_status_exposes_capability(self) -> None:
         runtime = InMemoryBrowserRuntime()
-        status = runtime.status(profile="openpipixia")
+        status = runtime.status(profile="openppx")
         self.assertEqual(status["capability"]["backend"], "memory")
         self.assertIn("act", status["capability"]["supportedActions"])
         profiles = runtime.profiles()
-        openpipixia = next(entry for entry in profiles["profiles"] if entry["name"] == "openpipixia")
-        self.assertEqual(openpipixia["capability"]["backend"], "memory")
-        self.assertIn("snapshot", openpipixia["capability"]["supportedActions"])
+        openppx = next(entry for entry in profiles["profiles"] if entry["name"] == "openppx")
+        self.assertEqual(openppx["capability"]["backend"], "memory")
+        self.assertIn("snapshot", openppx["capability"]["supportedActions"])
 
     def test_resolve_browser_artifact_path_enforces_root(self) -> None:
         with tempfile.TemporaryDirectory() as root_tmp, tempfile.TemporaryDirectory() as outside_tmp:

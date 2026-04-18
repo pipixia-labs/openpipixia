@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 from google.adk.tools import load_artifacts
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 
-from openpipixia.runtime.interaction_context import (
+from openppx.runtime.interaction_context import (
     INTERACTION_CONTEXT_STATE_KEY,
     MEMORY_INGEST_OFFSET_STATE_KEY,
 )
@@ -18,19 +18,19 @@ from openpipixia.runtime.interaction_context import (
 
 class AgentMemoryTests(unittest.TestCase):
     def test_build_tools_includes_preload_memory_tool(self) -> None:
-        from openpipixia import agent
+        from openppx import agent
 
         tools = agent._build_tools()
         self.assertTrue(any(isinstance(item, PreloadMemoryTool) for item in tools))
 
     def test_build_tools_includes_load_artifacts(self) -> None:
-        from openpipixia import agent
+        from openppx import agent
 
         tools = agent._build_tools()
         self.assertIn(load_artifacts, tools)
 
     def test_before_agent_memory_callback_sets_fallback_offset(self) -> None:
-        from openpipixia import agent
+        from openppx import agent
 
         callback_context = types.SimpleNamespace(
             state={},
@@ -42,7 +42,7 @@ class AgentMemoryTests(unittest.TestCase):
         self.assertEqual(callback_context.state[MEMORY_INGEST_OFFSET_STATE_KEY], 3)
 
     def test_after_agent_memory_callback_persists_new_events(self) -> None:
-        from openpipixia import agent
+        from openppx import agent
 
         event_1 = object()
         event_2 = object()
@@ -67,7 +67,7 @@ class AgentMemoryTests(unittest.TestCase):
         self.assertEqual(kwargs["custom_metadata"]["ingest_reason"], "after_agent_callback")
 
     def test_after_agent_memory_callback_skips_silent_service_principal(self) -> None:
-        from openpipixia import agent
+        from openppx import agent
 
         callback_context = types.SimpleNamespace(
             state={
@@ -86,7 +86,7 @@ class AgentMemoryTests(unittest.TestCase):
         callback_context.add_events_to_memory.assert_not_awaited()
 
     def test_after_agent_memory_callback_ignores_missing_memory_service(self) -> None:
-        from openpipixia import agent
+        from openppx import agent
 
         callback_context = types.SimpleNamespace(
             state={MEMORY_INGEST_OFFSET_STATE_KEY: 0},
@@ -97,24 +97,24 @@ class AgentMemoryTests(unittest.TestCase):
         callback_context.add_events_to_memory.assert_awaited_once()
 
     def test_root_agent_registers_after_agent_callback(self) -> None:
-        from openpipixia import agent
+        from openppx import agent
 
         self.assertIs(agent.root_agent.before_agent_callback, agent._before_agent_memory_callback)
         self.assertIs(agent.root_agent.after_agent_callback, agent._after_agent_memory_callback)
 
     def test_root_agent_registers_workspace_bootstrap_before_model_callback(self) -> None:
-        from openpipixia import agent
-        from openpipixia.runtime.workspace_bootstrap import before_model_workspace_bootstrap_callback
+        from openppx import agent
+        from openppx.runtime.workspace_bootstrap import before_model_workspace_bootstrap_callback
 
         callbacks = agent.root_agent.before_model_callback
         self.assertIsInstance(callbacks, list)
         self.assertIn(before_model_workspace_bootstrap_callback, callbacks)
 
     def test_mcp_toolsets_still_appended_after_memory_tool(self) -> None:
-        from openpipixia import agent
+        from openppx import agent
 
         sentinel_toolset = object()
-        with patch("openpipixia.app.agent.build_mcp_toolsets_from_env", return_value=[sentinel_toolset]):
+        with patch("openppx.app.agent.build_mcp_toolsets_from_env", return_value=[sentinel_toolset]):
             tools = agent._build_tools()
         self.assertIn(sentinel_toolset, tools)
 

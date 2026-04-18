@@ -1,4 +1,4 @@
-# openpipixia 配置说明
+# openppx 配置说明
 
 ## 配置来源与优先级
 
@@ -370,9 +370,9 @@ export OPENPPX_GUI_ALLOW_DANGEROUS_KEYS=false
           "/absolute/path/to/workspace"
         ]
       },
-      "openpipixia_gui": {
+      "openppx_gui": {
         "enabled": true,
-        "command": "openpipixia-gui-mcp",
+        "command": "openppx-gui-mcp",
         "args": [],
         "toolNamePrefix": "mcp_gui_",
         "requireConfirmation": true

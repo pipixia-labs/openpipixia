@@ -7,9 +7,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from openpipixia.bus.events import OutboundMessage
-from openpipixia.bus.queue import MessageBus
-from openpipixia.channels.qq import QQChannel
+from openppx.bus.events import OutboundMessage
+from openppx.bus.queue import MessageBus
+from openppx.channels.qq import QQChannel
 
 
 class QQChannelTests(unittest.IsolatedAsyncioTestCase):

@@ -1,6 +1,6 @@
 ## Channels
 
-Connect OpenPipixia to your preferred chat platforms.
+Connect OpenPPX to your preferred chat platforms.
 
 ### Telegram
 
@@ -100,7 +100,7 @@ Uses **WebSocket** long connection — no public IP required.
 - Create a new app → Enable **Bot** capability
 - **Permissions**: Add `im:message` (send messages) and `im:message.p2p_msg:readonly` (receive messages)
 - **Events**: Add `im.message.receive_v1` (receive messages)
-  - Select **Long Connection** mode (requires running openpipixia first to establish connection)
+  - Select **Long Connection** mode (requires running openppx first to establish connection)
 - Get **App ID** and **App Secret** from "Credentials & Basic Info"
 - Publish the app
 
@@ -145,7 +145,7 @@ Uses **botpy SDK** with WebSocket — no public IP required. Currently supports 
 
 **3. Configure**
 
-> - `allowFrom`: Leave empty for public access, or add user openids to restrict. You can find openids in the openpipixia logs when a user messages the bot.
+> - `allowFrom`: Leave empty for public access, or add user openids to restrict. You can find openids in the openppx logs when a user messages the bot.
 > - For production: submit a review in the bot console and publish. See [QQ Bot Docs](https://bot.q.qq.com/wiki/) for the full publishing flow.
 
 ```json
@@ -212,7 +212,7 @@ Uses **Socket Mode** — no public URL required.
 - **App Home**: Scroll to **Show Tabs** → Enable **Messages Tab** → Check **"Allow users to send Slash commands and messages from the messages tab"**
 - **Install App**: Click **Install to Workspace** → Authorize → copy the **Bot Token** (`xoxb-...`)
 
-**3. Configure openpipixia**
+**3. Configure openppx**
 
 ```json
 {
@@ -237,10 +237,10 @@ DM the bot directly or @mention it in a channel — it should respond!
 
 ### Email
 
-Give openpipixia its own email account. It polls **IMAP** for incoming mail and replies via **SMTP** — like a personal email assistant.
+Give openppx its own email account. It polls **IMAP** for incoming mail and replies via **SMTP** — like a personal email assistant.
 
 **1. Get credentials (Gmail example)**
-- Create a dedicated Gmail account for your bot (e.g. `my-openpipixia@gmail.com`)
+- Create a dedicated Gmail account for your bot (e.g. `my-openppx@gmail.com`)
 - Enable 2-Step Verification → Create an [App Password](https://myaccount.google.com/apppasswords)
 - Use this app password for both IMAP and SMTP
 
@@ -259,13 +259,13 @@ Give openpipixia its own email account. It polls **IMAP** for incoming mail and 
       "consentGranted": true,
       "imapHost": "imap.gmail.com",
       "imapPort": 993,
-      "imapUsername": "my-openpipixia@gmail.com",
+      "imapUsername": "my-openppx@gmail.com",
       "imapPassword": "your-app-password",
       "smtpHost": "smtp.gmail.com",
       "smtpPort": 587,
-      "smtpUsername": "my-openpipixia@gmail.com",
+      "smtpUsername": "my-openppx@gmail.com",
       "smtpPassword": "your-app-password",
-      "fromAddress": "my-openpipixia@gmail.com",
+      "fromAddress": "my-openppx@gmail.com",
       "allowFrom": ["your-real-email@gmail.com"]
     }
   }

@@ -5,7 +5,7 @@ from __future__ import annotations
 import types as pytypes
 import unittest
 
-from openpipixia.runtime.adk_utils import extract_text, merge_text_stream
+from openppx.runtime.adk_utils import extract_text, merge_text_stream
 
 
 class AdkUtilsTests(unittest.TestCase):

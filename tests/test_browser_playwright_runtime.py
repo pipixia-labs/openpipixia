@@ -10,8 +10,8 @@ from io import BytesIO
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
-from openpipixia.browser.playwright_runtime import PlaywrightBrowserRuntime, build_snapshot_refs
-from openpipixia.browser.runtime import BrowserRuntimeError
+from openppx.browser.playwright_runtime import PlaywrightBrowserRuntime, build_snapshot_refs
+from openppx.browser.runtime import BrowserRuntimeError
 
 
 class PlaywrightRuntimeHelperTests(unittest.TestCase):
@@ -70,10 +70,10 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
     def test_chrome_profile_availability_depends_on_env(self) -> None:
         runtime = PlaywrightBrowserRuntime()
         profiles = runtime.profiles()
-        openpipixia = next(entry for entry in profiles["profiles"] if entry["name"] == "openpipixia")
+        openppx = next(entry for entry in profiles["profiles"] if entry["name"] == "openppx")
         chrome = next(entry for entry in profiles["profiles"] if entry["name"] == "chrome")
-        self.assertEqual(openpipixia["attachMode"], "launch-or-cdp")
-        self.assertIn("ownershipModel", openpipixia)
+        self.assertEqual(openppx["attachMode"], "launch-or-cdp")
+        self.assertIn("ownershipModel", openppx)
         self.assertFalse(chrome["available"])
         self.assertEqual(chrome["attachMode"], "cdp-required")
         self.assertTrue(chrome["requires"]["OPENPPX_BROWSER_CHROME_CDP_URL"])
@@ -112,7 +112,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_CHROME_CDP_URL"] = "http://127.0.0.1:9222"
         runtime = PlaywrightBrowserRuntime()
         self.assertEqual(
-            runtime._resolve_cdp_url_for_profile("openpipixia"),  # type: ignore[attr-defined]
+            runtime._resolve_cdp_url_for_profile("openppx"),  # type: ignore[attr-defined]
             "http://127.0.0.1:9333",
         )
         self.assertEqual(
@@ -148,7 +148,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
         runtime._owns_context = True  # type: ignore[attr-defined]
         runtime._owns_browser = True  # type: ignore[attr-defined]
 
-        runtime.stop(profile="openpipixia")
+        runtime.stop(profile="openppx")
         self.assertTrue(fake_context.closed)
         self.assertTrue(fake_browser.closed)
         self.assertTrue(fake_manager.stopped)
@@ -178,14 +178,14 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
         runtime._owns_context = False  # type: ignore[attr-defined]
         runtime._owns_browser = False  # type: ignore[attr-defined]
 
-        runtime.stop(profile="openpipixia")
+        runtime.stop(profile="openppx")
         self.assertFalse(fake_context.closed)
         self.assertFalse(fake_browser.closed)
         self.assertTrue(fake_manager.stopped)
 
-    def test_openpipixia_status_includes_ownership_flags(self) -> None:
+    def test_openppx_status_includes_ownership_flags(self) -> None:
         runtime = PlaywrightBrowserRuntime()
-        status = runtime.status(profile="openpipixia")
+        status = runtime.status(profile="openppx")
         self.assertIn("browserOwned", status)
         self.assertIn("contextOwned", status)
         self.assertEqual(status["capability"]["backend"], "playwright")
@@ -217,7 +217,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
             _DummyResponse('{"ok":true,"kind":"wait"}'),
             _DummyResponse('{"ok":true,"kind":"press"}'),
         ]
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=responses):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=responses):
             started = runtime.start(profile="chrome")
             self.assertTrue(started["running"])
             self.assertEqual(started["transport"], "relay")
@@ -262,7 +262,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
         runtime = PlaywrightBrowserRuntime()
         image_base64 = "aGVsbG8="
         with patch(
-            "openpipixia.browser.playwright_runtime.urlopen",
+            "openppx.browser.playwright_runtime.urlopen",
             return_value=_DummyResponse(
                 f'{{"ok":true,"targetId":"tab-2","type":"png","imageBase64":"{image_base64}"}}'
             ),
@@ -295,7 +295,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
         runtime = PlaywrightBrowserRuntime()
         pdf_base64 = "aGVsbG8="
         with patch(
-            "openpipixia.browser.playwright_runtime.urlopen",
+            "openppx.browser.playwright_runtime.urlopen",
             return_value=_DummyResponse(
                 f'{{"ok":true,"targetId":"tab-2","pdfBase64":"{pdf_base64}"}}'
             ),
@@ -328,7 +328,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
         with patch(
-            "openpipixia.browser.playwright_runtime.urlopen",
+            "openppx.browser.playwright_runtime.urlopen",
             return_value=_DummyResponse(
                 '{"ok":true,"targetId":"tab-2","messages":[{"level":"error","text":"boom"}]}'
             ),
@@ -381,7 +381,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
             with open(file_path, "wb") as f:
                 f.write(b"img")
             os.environ["OPENPPX_BROWSER_UPLOAD_ROOT"] = tmpdir
-            with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+            with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
                 runtime.snapshot(profile="chrome", target_id="tab-2", snapshot_format="ai")
                 out = runtime.upload(profile="chrome", target_id="tab-2", paths=[file_path], ref="e1")
         self.assertTrue(out["ok"])
@@ -427,7 +427,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
             with open(file_path, "wb") as f:
                 f.write(b"img")
             os.environ["OPENPPX_BROWSER_UPLOAD_ROOT"] = tmpdir
-            with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+            with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
                 out = runtime.upload(profile="chrome", target_id="tab-2", paths=[file_path], ref="#fileInput")
         self.assertTrue(out["ok"])
         self.assertIn("/upload", calls[0])
@@ -455,7 +455,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.dialog(
                 profile="chrome",
                 target_id="tab-2",
@@ -500,7 +500,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.dialog(profile="chrome", target_id="tab-2", accept=False)
         self.assertTrue(out["ok"])
         self.assertIn("/dialog", calls[0])
@@ -534,7 +534,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             opened = runtime.open_tab(profile="chrome", url="https://example.com")
             focused = runtime.focus_tab(profile="chrome", target_id="tab-3")
             closed = runtime.close_tab(profile="chrome", target_id="tab-3")
@@ -577,7 +577,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.act(profile="chrome", target_id="tab-1", request={"kind": "hover", "selector": "#menu"})
         self.assertTrue(out["ok"])
         body = json.loads(captured["body"])
@@ -610,7 +610,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.act(
                 profile="chrome",
                 target_id="tab-1",
@@ -649,7 +649,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
         runtime._snapshot_ref_selectors_by_tab["tab-1"] = {"e1": "#from"}  # type: ignore[attr-defined]
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.act(
                 profile="chrome",
                 target_id="tab-1",
@@ -688,7 +688,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
         runtime._snapshot_ref_selectors_by_tab["tab-1"] = {"e2": "#email"}  # type: ignore[attr-defined]
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.act(
                 profile="chrome",
                 target_id="tab-1",
@@ -734,7 +734,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.act(profile="chrome", target_id="tab-1", request={"kind": "resize", "width": 1280, "height": 720})
         self.assertTrue(out["ok"])
         body = json.loads(captured["body"])
@@ -768,7 +768,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.act(profile="chrome", target_id="tab-1", request={"kind": "close"})
         self.assertTrue(out["ok"])
         body = json.loads(captured["body"])
@@ -802,7 +802,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_EVALUATE_ENABLED"] = "1"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.act(profile="chrome", target_id="tab-1", request={"kind": "evaluate", "fn": "() => 1"})
         self.assertTrue(out["ok"])
         body = json.loads(captured["body"])
@@ -835,7 +835,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.act(profile="chrome", request={"kind": "open", "url": "https://example.com"})
         self.assertTrue(out["ok"])
         body = json.loads(captured["body"])
@@ -888,7 +888,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.act(
                 profile="chrome",
                 target_id="tab-1",
@@ -937,7 +937,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             runtime.snapshot(profile="chrome", target_id="tab-1", snapshot_format="ai")
             out = runtime.act(profile="chrome", target_id="tab-1", request={"kind": "click", "ref": "e1"})
         self.assertTrue(out["ok"])
@@ -980,7 +980,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             runtime.snapshot(profile="chrome", target_id="tab-1", snapshot_format="ai")
             out = runtime.act(
                 profile="chrome",
@@ -1018,7 +1018,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.act(
                 profile="chrome",
                 target_id="tab-1",
@@ -1054,12 +1054,12 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             runtime.act(profile="chrome", target_id="tab-1", request={"kind": "wait", "timeMs": 999999})
         body = json.loads(captured["body"])
         self.assertEqual(body["request"]["timeMs"], 60000)
 
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             runtime.act(profile="chrome", target_id="tab-1", request={"kind": "wait"})
         body2 = json.loads(captured["body"])
         self.assertEqual(body2["request"]["timeMs"], 500)
@@ -1090,7 +1090,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=_fake_urlopen):
             out = runtime.act(profile="chrome", target_id="tab-1", request={"kind": "press", "key": "  Enter  "})
         self.assertTrue(out["ok"])
         body = json.loads(captured["body"])
@@ -1099,7 +1099,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
     def test_chrome_relay_maps_timeout_error(self) -> None:
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=URLError(TimeoutError("timed out"))):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=URLError(TimeoutError("timed out"))):
             with self.assertRaises(BrowserRuntimeError) as ctx:
                 runtime.status(profile="chrome")
         self.assertEqual(ctx.exception.status, 504)
@@ -1111,7 +1111,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
 
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=socket.timeout("timed out")):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=socket.timeout("timed out")):
             with self.assertRaises(BrowserRuntimeError) as ctx:
                 runtime.status(profile="chrome")
         self.assertEqual(ctx.exception.status, 504)
@@ -1127,7 +1127,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
             hdrs=None,
             fp=BytesIO(b'{"error":"rate limited","status":429}'),
         )
-        with patch("openpipixia.browser.playwright_runtime.urlopen", side_effect=http_error):
+        with patch("openppx.browser.playwright_runtime.urlopen", side_effect=http_error):
             with self.assertRaises(BrowserRuntimeError) as ctx:
                 runtime.status(profile="chrome")
         self.assertEqual(ctx.exception.status, 429)
@@ -1161,7 +1161,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
         with self.assertRaises(BrowserRuntimeError):
             runtime.act(profile="chrome", request={"kind": "type", "selector": "#q", "text": "abcd"})
 
-        with patch("openpipixia.browser.playwright_runtime.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.browser.playwright_runtime.urlopen", return_value=_DummyResponse('{"ok":true}')):
             out = runtime.act(profile="chrome", request={"kind": "type", "selector": "#q", "text": "abc"})
         self.assertTrue(out["ok"])
 
@@ -1190,7 +1190,7 @@ class PlaywrightRuntimeHelperTests(unittest.TestCase):
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_URL"] = "http://relay.local:9800"
         os.environ["OPENPPX_BROWSER_CHROME_RELAY_MAX_BODY_BYTES"] = "300"
         runtime = PlaywrightBrowserRuntime()
-        with patch("openpipixia.browser.playwright_runtime.urlopen", return_value=_DummyResponse('{"ok":true}')):
+        with patch("openppx.browser.playwright_runtime.urlopen", return_value=_DummyResponse('{"ok":true}')):
             out = runtime.navigate(profile="chrome", target_id="tab-1", url="https://example.com/a")
         self.assertTrue(out["ok"])
 

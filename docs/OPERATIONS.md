@@ -1,9 +1,9 @@
-# openpipixia 运行与操作指南
+# openppx 运行与操作指南
 
 ## 安装
 
 ```bash
-cd openpipixia
+cd openppx
 pip install -e .
 ```
 
@@ -87,9 +87,9 @@ ppx gateway-service status --json
 
 当前相关代码位置：
 
-- `openpipixia/doctor_rules.py`：doctor/install 共用的基础规则表与 doctor backfill 元数据。
-- `openpipixia/onboarding_adapters.py`：provider/channel onboarding adapter 协议、默认 adapter 与注册表。
-- `openpipixia/cli.py`：命令编排层，调用上述模块执行规则与 adapter。
+- `openppx/doctor_rules.py`：doctor/install 共用的基础规则表与 doctor backfill 元数据。
+- `openppx/onboarding_adapters.py`：provider/channel onboarding adapter 协议、默认 adapter 与注册表。
+- `openppx/cli.py`：命令编排层，调用上述模块执行规则与 adapter。
 
 建议后续扩展字段时，优先改规则表，再补测试，不要直接在流程函数里新增硬编码 if/else。
 ### 常见问题
@@ -151,19 +151,19 @@ ppx doctor --fix --json
 ### 单轮调用
 
 ```bash
-python -m openpipixia.cli -m "Describe what you can do"
+python -m openppx.cli -m "Describe what you can do"
 ```
 
 可显式指定会话标识：
 
 ```bash
-python -m openpipixia.cli -m "Describe what you can do" --user-id local --session-id demo001
+python -m openppx.cli -m "Describe what you can do" --user-id local --session-id demo001
 ```
 
 ### ADK CLI 模式
 
 ```bash
-adk run openpipixia
+adk run openppx
 ```
 
 ### Wrapper CLI
@@ -203,7 +203,7 @@ ppx channels bridge stop
 ### 本地通道
 
 ```bash
-python -m openpipixia.cli gateway run --channels local --interactive-local
+python -m openppx.cli gateway run --channels local --interactive-local
 ```
 
 ### 多通道模式（含 Feishu）
@@ -221,7 +221,7 @@ ppx gateway
 
 ## WhatsApp Bridge
 
-`openpipixia` 使用本地 Node.js Bridge（Baileys + WebSocket）完成 WhatsApp 登录和消息收发。
+`openppx` 使用本地 Node.js Bridge（Baileys + WebSocket）完成 WhatsApp 登录和消息收发。
 
 ```bash
 # 前台扫码登录
@@ -242,7 +242,7 @@ scripts/whatsapp_bridge_e2e.sh smoke
 
 ## Cron 调度
 
-`openpipixia` 的 cron 是进程内调度器，不写系统 crontab。只有网关运行时任务才会执行。
+`openppx` 的 cron 是进程内调度器，不写系统 crontab。只有网关运行时任务才会执行。
 
 - 存储文件：`OPENPPX_WORKSPACE/.openppx/cron_jobs.json`
 - 支持调度：`every`、`cron`（可配 `tz`）、`at`
@@ -264,7 +264,7 @@ ppx cron status
 
 ## Token 统计
 
-`openpipixia` 会在每次 LLM 调用结束后记录 token 使用信息（请求/响应、文本/图像、时间戳）。
+`openppx` 会在每次 LLM 调用结束后记录 token 使用信息（请求/响应、文本/图像、时间戳）。
 
 - 存储位置：`~/.openppx/token_usage.db`（SQLite）
 - 记录粒度：每次 request/response 一条事件
@@ -294,6 +294,6 @@ pytest -q
 ## 示例
 
 ```bash
-python -m openpipixia.cli -m "search for the latest research progress today, and create a PPT for me."
-python -m openpipixia.cli -m "download all PDF files from this page: https://bbs.kangaroo.study/forum.php?mod=viewthread&tid=467"
+python -m openppx.cli -m "search for the latest research progress today, and create a PPT for me."
+python -m openppx.cli -m "download all PDF files from this page: https://bbs.kangaroo.study/forum.php?mod=viewthread&tid=467"
 ```

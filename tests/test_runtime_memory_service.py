@@ -7,13 +7,13 @@ import unittest
 
 from google.adk.memory import InMemoryMemoryService
 
-from openpipixia.runtime.markdown_memory_service import MarkdownMemoryService
-from openpipixia.runtime.memory_service import (
+from openppx.runtime.markdown_memory_service import MarkdownMemoryService
+from openppx.runtime.memory_service import (
     MemoryConfig,
     create_memory_service,
     load_memory_config,
 )
-from openpipixia.runtime.sqlite_memory_service import SQLiteMemoryService
+from openppx.runtime.sqlite_memory_service import SQLiteMemoryService
 
 
 class MemoryServiceFactoryTests(unittest.TestCase):
@@ -39,22 +39,22 @@ class MemoryServiceFactoryTests(unittest.TestCase):
         self.assertIn(".openppx/memory", cfg.markdown_dir)
 
     def test_load_memory_config_prefers_agent_home_memory_dir_when_available(self) -> None:
-        os.environ["OPENPPX_AGENT_HOME"] = "/tmp/openpipixia-agent-home"
+        os.environ["OPENPPX_AGENT_HOME"] = "/tmp/openppx-agent-home"
         os.environ.pop("OPENPPX_MEMORY_MARKDOWN_DIR", None)
 
         cfg = load_memory_config()
 
-        self.assertEqual(cfg.markdown_dir, "/tmp/openpipixia-agent-home/memory")
+        self.assertEqual(cfg.markdown_dir, "/tmp/openppx-agent-home/memory")
 
     def test_load_memory_config_falls_back_to_data_dir_when_agent_home_is_missing(self) -> None:
         os.environ.pop("OPENPPX_WORKSPACE", None)
         os.environ.pop("OPENPPX_AGENT_HOME", None)
-        os.environ["OPENPPX_DATA_DIR"] = "/tmp/openpipixia-agent-a"
+        os.environ["OPENPPX_DATA_DIR"] = "/tmp/openppx-agent-a"
         os.environ.pop("OPENPPX_MEMORY_MARKDOWN_DIR", None)
 
         cfg = load_memory_config()
 
-        self.assertEqual(cfg.markdown_dir, "/tmp/openpipixia-agent-a/memory")
+        self.assertEqual(cfg.markdown_dir, "/tmp/openppx-agent-a/memory")
 
     def test_create_memory_service_can_be_disabled(self) -> None:
         service = create_memory_service(MemoryConfig(False, "in_memory", ""))
@@ -66,7 +66,7 @@ class MemoryServiceFactoryTests(unittest.TestCase):
                 enabled=True,
                 backend="sqlite",
                 markdown_dir="/tmp/unused-memory",
-                sqlite_db_path="/tmp/openpipixia-memory.db",
+                sqlite_db_path="/tmp/openppx-memory.db",
             )
         )
         self.assertIsInstance(service, SQLiteMemoryService)
@@ -90,7 +90,7 @@ class MemoryServiceFactoryTests(unittest.TestCase):
             MemoryConfig(
                 enabled=True,
                 backend="markdown",
-                markdown_dir="/tmp/openpipixia_md_memory",
+                markdown_dir="/tmp/openppx_md_memory",
             )
         )
         self.assertIsInstance(service, MarkdownMemoryService)

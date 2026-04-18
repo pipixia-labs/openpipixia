@@ -10,19 +10,19 @@ from google.adk.events.event import Event
 from google.adk.memory.memory_entry import MemoryEntry
 from google.genai import types
 
-from openpipixia.runtime.access_policy import AccessPolicy
-from openpipixia.runtime.agent_access_store import AgentAccessStore, AgentMembership
-from openpipixia.runtime.client_api_service import (
+from openppx.runtime.access_policy import AccessPolicy
+from openppx.runtime.agent_access_store import AgentAccessStore, AgentMembership
+from openppx.runtime.client_api_service import (
     ClientApiCoordinator,
     build_agent_profile,
     list_enabled_agent_names,
     project_session_event,
 )
-from openpipixia.runtime.identity_models import ResolvedPrincipal
-from openpipixia.runtime.identity_store import IdentityStore
-from openpipixia.runtime.memory_query_service import MemoryQueryService
-from openpipixia.runtime.session_service import SessionConfig, create_session_service
-from openpipixia.runtime.sqlite_memory_service import SQLiteMemoryService
+from openppx.runtime.identity_models import ResolvedPrincipal
+from openppx.runtime.identity_store import IdentityStore
+from openppx.runtime.memory_query_service import MemoryQueryService
+from openppx.runtime.session_service import SessionConfig, create_session_service
+from openppx.runtime.sqlite_memory_service import SQLiteMemoryService
 
 
 class _FakeProcess:
@@ -215,7 +215,7 @@ def test_create_run_streams_replayable_events(tmp_path: Path, monkeypatch) -> No
     )
 
     monkeypatch.setattr(
-        "openpipixia.runtime.client_api_service.subprocess.Popen",
+        "openppx.runtime.client_api_service.subprocess.Popen",
         lambda *args, **kwargs: _FakeProcess(stdout_lines),
     )
 
@@ -275,7 +275,7 @@ def test_create_run_emits_normalized_event_context(tmp_path: Path, monkeypatch) 
     )
 
     monkeypatch.setattr(
-        "openpipixia.runtime.client_api_service.subprocess.Popen",
+        "openppx.runtime.client_api_service.subprocess.Popen",
         lambda *args, **kwargs: _FakeProcess(stdout_lines),
     )
 
@@ -316,7 +316,7 @@ def test_cancel_run_emits_cancelled_message_and_run(tmp_path: Path, monkeypatch)
     (agent_dir / "config.json").write_text(json.dumps({"agent": {"workspace": "workspace/writer"}}), encoding="utf-8")
 
     monkeypatch.setattr(
-        "openpipixia.runtime.client_api_service.subprocess.Popen",
+        "openppx.runtime.client_api_service.subprocess.Popen",
         lambda *args, **kwargs: _PendingProcess(),
     )
 
@@ -371,7 +371,7 @@ def test_create_run_tolerates_null_long_running_tool_ids(tmp_path: Path, monkeyp
     )
 
     monkeypatch.setattr(
-        "openpipixia.runtime.client_api_service.subprocess.Popen",
+        "openppx.runtime.client_api_service.subprocess.Popen",
         lambda *args, **kwargs: _FakeProcess(stdout_lines),
     )
 
@@ -401,7 +401,7 @@ def test_client_api_reads_sessions_directly_without_worker(tmp_path: Path, monke
         )
         async with service:
             session = await service.create_session(
-                app_name="openpipixia",
+                app_name="openppx",
                 user_id="ppx-client-user",
                 session_id="writer-seeded",
             )
@@ -419,7 +419,7 @@ def test_client_api_reads_sessions_directly_without_worker(tmp_path: Path, monke
     asyncio.run(_seed())
 
     monkeypatch.setattr(
-        "openpipixia.runtime.client_api_service._run_worker_command",
+        "openppx.runtime.client_api_service._run_worker_command",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("worker path should not be used")),
     )
 
@@ -526,7 +526,7 @@ def test_client_api_owner_can_list_participant_sessions(tmp_path: Path) -> None:
         )
         async with service:
             session = await service.create_session(
-                app_name="openpipixia",
+                app_name="openppx",
                 user_id=participant.principal_id,
                 session_id="participant-session",
             )
@@ -591,7 +591,7 @@ def test_client_api_owner_cannot_run_in_participant_session(tmp_path: Path) -> N
         )
         async with service:
             await service.create_session(
-                app_name="openpipixia",
+                app_name="openppx",
                 user_id=participant.principal_id,
                 session_id="participant-session",
             )
@@ -637,7 +637,7 @@ def test_client_api_owner_can_query_participant_memory(tmp_path: Path) -> None:
     memory_service = SQLiteMemoryService(db_path=memory_db_path)
     asyncio.run(
         memory_service.add_memory(
-            app_name="openpipixia",
+            app_name="openppx",
             user_id=participant.principal_id,
             memories=[_memory("remember the launch checklist", timestamp="2026-04-18T10:00:00+08:00")],
         )
