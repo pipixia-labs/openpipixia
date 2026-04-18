@@ -866,3 +866,114 @@ def test_client_api_root_can_change_owner(tmp_path: Path) -> None:
     assert access_payload["ok"] is True
     assert access_payload["data"]["agent"]["owner_principal_id"] == "new-owner"
     assert access_payload["data"]["requester"]["capabilities"]["can_change_owner"] is True
+
+
+def test_client_api_owner_can_read_memory_audit(tmp_path: Path) -> None:
+    (tmp_path / "global_config.json").write_text(
+        json.dumps({"agents": [{"name": "writer", "enabled": True}]}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / "writer"
+    agent_dir.mkdir()
+    (agent_dir / "config.json").write_text(
+        json.dumps({"agent": {"workspace": "workspace/writer", "ownerPrincipalId": "owner"}}),
+        encoding="utf-8",
+    )
+
+    db_path = tmp_path / "identity.db"
+    memory_db_path = tmp_path / "memory.db"
+    identity_store = IdentityStore(db_path=db_path)
+    access_store = AgentAccessStore(db_path=db_path)
+    owner = identity_store.put_principal(_principal(principal_id="owner"))
+    participant = identity_store.put_principal(_principal(principal_id="participant"))
+    access_store.set_agent_owner(agent_id="writer", owner_principal_id=owner.principal_id)
+    access_store.upsert_membership(
+        AgentMembership(agent_id="writer", principal_id=participant.principal_id, relation="participant")
+    )
+    policy = AccessPolicy(identity_store=identity_store, agent_access_store=access_store)
+    query_service = MemoryQueryService(
+        identity_store=identity_store,
+        access_policy=policy,
+        memory_service=SQLiteMemoryService(db_path=memory_db_path),
+        audit_db_path=memory_db_path,
+    )
+    asyncio.run(
+        query_service.search(
+            agent_id="writer",
+            requester_principal_id=participant.principal_id,
+            query="launch",
+        )
+    )
+
+    coordinator = ClientApiCoordinator(
+        data_dir=tmp_path,
+        identity_store=identity_store,
+        agent_access_store=access_store,
+        access_policy=policy,
+        memory_query_service=query_service,
+    )
+    payload = coordinator.get_memory_audit("writer", user_id=owner.principal_id, limit=10)
+
+    assert payload["ok"] is True
+    assert payload["data"]["requester"]["relation"] == "owner"
+    assert payload["data"]["items"][0]["requester_principal_id"] == participant.principal_id
+
+
+def test_client_api_participant_memory_audit_stays_self_scoped(tmp_path: Path) -> None:
+    (tmp_path / "global_config.json").write_text(
+        json.dumps({"agents": [{"name": "writer", "enabled": True}]}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / "writer"
+    agent_dir.mkdir()
+    (agent_dir / "config.json").write_text(
+        json.dumps({"agent": {"workspace": "workspace/writer", "ownerPrincipalId": "owner"}}),
+        encoding="utf-8",
+    )
+
+    db_path = tmp_path / "identity.db"
+    memory_db_path = tmp_path / "memory.db"
+    identity_store = IdentityStore(db_path=db_path)
+    access_store = AgentAccessStore(db_path=db_path)
+    participant = identity_store.put_principal(_principal(principal_id="participant"))
+    other = identity_store.put_principal(_principal(principal_id="other"))
+    access_store.upsert_membership(
+        AgentMembership(agent_id="writer", principal_id=participant.principal_id, relation="participant")
+    )
+    access_store.upsert_membership(
+        AgentMembership(agent_id="writer", principal_id=other.principal_id, relation="participant")
+    )
+    policy = AccessPolicy(identity_store=identity_store, agent_access_store=access_store)
+    query_service = MemoryQueryService(
+        identity_store=identity_store,
+        access_policy=policy,
+        memory_service=SQLiteMemoryService(db_path=memory_db_path),
+        audit_db_path=memory_db_path,
+    )
+    asyncio.run(
+        query_service.search(
+            agent_id="writer",
+            requester_principal_id=participant.principal_id,
+            query="alpha",
+        )
+    )
+    asyncio.run(
+        query_service.search(
+            agent_id="writer",
+            requester_principal_id=other.principal_id,
+            query="beta",
+        )
+    )
+
+    coordinator = ClientApiCoordinator(
+        data_dir=tmp_path,
+        identity_store=identity_store,
+        agent_access_store=access_store,
+        access_policy=policy,
+        memory_query_service=query_service,
+    )
+    payload = coordinator.get_memory_audit("writer", user_id=participant.principal_id, limit=10)
+
+    assert payload["ok"] is True
+    assert payload["data"]["requester"]["scope_kind"] == "self"
+    assert [item["requester_principal_id"] for item in payload["data"]["items"]] == [participant.principal_id]

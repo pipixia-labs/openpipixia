@@ -127,6 +127,22 @@ class CLITests(unittest.TestCase):
                 )
                 mocked_bootstrap.assert_not_called()
 
+    def test_client_api_access_audit_dispatch(self) -> None:
+        from openpipixia import cli
+
+        with patch.object(cli, "bootstrap_env_from_config") as mocked_bootstrap:
+            with patch.object(cli, "_cmd_client_api_access_audit", return_value=0) as mocked:
+                with self.assertRaises(SystemExit) as ctx:
+                    cli.main(["client-api", "access", "audit", "writer", "--user-id", "owner", "--limit", "25"])
+                self.assertEqual(ctx.exception.code, 0)
+                mocked.assert_called_once_with(
+                    agent_id="writer",
+                    user_id="owner",
+                    limit=25,
+                    output_json=False,
+                )
+                mocked_bootstrap.assert_not_called()
+
     def test_client_api_access_add_participant_dispatch(self) -> None:
         from openpipixia import cli
 

@@ -28,6 +28,14 @@ class MemoryQueryResult:
     memories: list[MemoryEntry]
 
 
+@dataclass(slots=True)
+class MemoryAuditResult:
+    """Structured result for one explicit memory-audit query."""
+
+    decision: AccessDecision
+    rows: list[dict[str, Any]]
+
+
 def _prepare_db_path(db_path: Path) -> Path:
     """Return a writable SQLite path, falling back to workspace-local storage."""
     candidate = db_path.expanduser().resolve(strict=False)
@@ -266,3 +274,55 @@ class MemoryQueryService:
                 """
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_audit(
+        self,
+        *,
+        agent_id: str,
+        requester_principal_id: str,
+        limit: int = 50,
+    ) -> MemoryAuditResult:
+        """Return visible audit rows for one requester and agent."""
+        decision = self._access_policy.decide_agent_scope(
+            requester_principal_id=requester_principal_id,
+            agent_id=agent_id,
+            access_kind="memory_audit_read",
+        )
+        if not decision.allow:
+            return MemoryAuditResult(decision=decision, rows=[])
+
+        normalized_limit = max(int(limit), 0)
+        query = """
+            SELECT
+                audit_id,
+                requester_principal_id,
+                requester_principal_type,
+                requester_level,
+                agent_id,
+                target_scope,
+                query_text,
+                result_count,
+                access_kind,
+                reason,
+                created_at_ms
+            FROM memory_access_audit
+            WHERE agent_id = ?
+        """
+        params: list[Any] = [agent_id]
+        if decision.scope_kind != "all":
+            visible_requester_ids = [
+                item for item in decision.resolved_scope(self._identity_store.list_principal_ids()) if str(item).strip()
+            ]
+            if not visible_requester_ids:
+                return MemoryAuditResult(decision=decision, rows=[])
+            placeholders = ", ".join("?" for _ in visible_requester_ids)
+            query += f" AND requester_principal_id IN ({placeholders})"
+            params.extend(visible_requester_ids)
+        query += " ORDER BY created_at_ms DESC"
+        if normalized_limit > 0:
+            query += " LIMIT ?"
+            params.append(normalized_limit)
+
+        with self._lock, _connect(self._audit_db_path) as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        return MemoryAuditResult(decision=decision, rows=[dict(row) for row in rows])

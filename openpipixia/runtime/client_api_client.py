@@ -66,6 +66,23 @@ class ClientApiClient:
             query={"user_id": user_id},
         )
 
+    def list_memory_audit(
+        self,
+        agent_id: str,
+        *,
+        user_id: str = "ppx-client-user",
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Fetch visible explicit-memory audit rows for one agent."""
+        return self._request(
+            "GET",
+            f"/api/v1/agents/{agent_id}/memory/audit",
+            query={
+                "user_id": user_id,
+                "limit": limit,
+            },
+        )
+
     def set_agent_owner(
         self,
         agent_id: str,

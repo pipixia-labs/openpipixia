@@ -119,3 +119,53 @@ def test_memory_query_service_root_gets_all_principals(tmp_path) -> None:
     assert result.decision.allow is True
     assert result.decision.scope_kind == "all"
     assert subject_ids == ["user-b", "user-a"]
+
+
+def test_memory_query_service_audit_respects_visible_scope(tmp_path) -> None:
+    db_path = tmp_path / "identity.db"
+    memory_db_path = tmp_path / "memory.db"
+    identity_store = IdentityStore(db_path=db_path)
+    access_store = AgentAccessStore(db_path=db_path)
+    owner = identity_store.put_principal(_principal(principal_id="owner"))
+    participant = identity_store.put_principal(_principal(principal_id="participant"))
+    access_store.set_agent_owner(agent_id="writer", owner_principal_id=owner.principal_id)
+    access_store.upsert_membership(
+        AgentMembership(agent_id="writer", principal_id=participant.principal_id, relation="participant")
+    )
+
+    query_service = MemoryQueryService(
+        identity_store=identity_store,
+        access_policy=AccessPolicy(identity_store=identity_store, agent_access_store=access_store),
+        memory_service=SQLiteMemoryService(db_path=memory_db_path),
+        audit_db_path=memory_db_path,
+    )
+    asyncio.run(
+        query_service.search(
+            agent_id="writer",
+            requester_principal_id=participant.principal_id,
+            query="checklist",
+        )
+    )
+    asyncio.run(
+        query_service.search(
+            agent_id="writer",
+            requester_principal_id=owner.principal_id,
+            query="summary",
+        )
+    )
+
+    participant_rows = query_service.list_audit(
+        agent_id="writer",
+        requester_principal_id=participant.principal_id,
+    )
+    owner_rows = query_service.list_audit(
+        agent_id="writer",
+        requester_principal_id=owner.principal_id,
+    )
+
+    assert participant_rows.decision.allow is True
+    assert participant_rows.decision.scope_kind == "self"
+    assert [row["requester_principal_id"] for row in participant_rows.rows] == ["participant"]
+    assert owner_rows.decision.allow is True
+    assert owner_rows.decision.scope_kind == "agent"
+    assert [row["requester_principal_id"] for row in owner_rows.rows] == ["owner", "participant"]

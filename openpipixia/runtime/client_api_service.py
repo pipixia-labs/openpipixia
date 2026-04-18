@@ -1427,6 +1427,43 @@ class ClientApiCoordinator:
             }
         )
 
+    def get_memory_audit(
+        self,
+        agent_id: str,
+        *,
+        user_id: str = "ppx-client-user",
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Return visible explicit-memory audit rows for one requester and agent."""
+        requester = self._ensure_requester_principal(user_id)
+        if self._ensure_agent_access_state(agent_id) is None:
+            return _error("AGENT_NOT_FOUND", f"Agent '{agent_id}' was not found.")
+        try:
+            result = self._memory_query_service.list_audit(
+                agent_id=agent_id,
+                requester_principal_id=requester.principal_id,
+                limit=limit,
+            )
+        except Exception as exc:
+            return _error("RUNTIME_UNAVAILABLE", str(exc))
+        if not result.decision.allow:
+            return _error(
+                "ACCESS_DENIED",
+                f"Principal '{requester.principal_id}' cannot read memory audit for agent '{agent_id}'.",
+                {"reason": result.decision.reason},
+            )
+        return _ok(
+            {
+                "items": result.rows,
+                "requester": {
+                    "principal_id": requester.principal_id,
+                    "relation": result.decision.relation_to_agent,
+                    "reason": result.decision.reason,
+                    "scope_kind": result.decision.scope_kind,
+                },
+            }
+        )
+
     def _consume_run_stderr(self, handle: RunHandle) -> None:
         """Continuously collect worker stderr for debug visibility."""
 
@@ -1748,6 +1785,17 @@ class _ClientApiHandler(BaseHTTPRequestHandler):
                 self._send_json(400, _error("INVALID_REQUEST", "Query parameter 'q' is required."))
                 return
             payload = self.coordinator.search_memory(segments[3], query_text, user_id=user_id)
+            self._send_json(200 if payload.get("ok") else 404, payload)
+            return
+        if len(segments) == 6 and segments[:3] == ["api", "v1", "agents"] and segments[4] == "memory" and segments[5] == "audit":
+            user_id = str(query.get("user_id") or "ppx-client-user")
+            raw_limit = str(query.get("limit") or "50").strip()
+            try:
+                limit = int(raw_limit)
+            except ValueError:
+                self._send_json(400, _error("INVALID_REQUEST", "Query parameter 'limit' must be an integer."))
+                return
+            payload = self.coordinator.get_memory_audit(segments[3], user_id=user_id, limit=limit)
             self._send_json(200 if payload.get("ok") else 404, payload)
             return
         if len(segments) == 5 and segments[:3] == ["api", "v1", "runs"] and segments[4] == "events":

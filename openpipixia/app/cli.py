@@ -3961,6 +3961,16 @@ def _cmd_client_api_access_get(*, agent_id: str, user_id: str, output_json: bool
     return _emit_client_api_payload(payload, output_json=output_json)
 
 
+def _cmd_client_api_access_audit(*, agent_id: str, user_id: str, limit: int, output_json: bool) -> int:
+    """Read one agent memory-access audit snapshot from the local client-api runtime."""
+    payload = _client_api_coordinator().get_memory_audit(
+        agent_id,
+        user_id=user_id,
+        limit=limit,
+    )
+    return _emit_client_api_payload(payload, output_json=output_json)
+
+
 def _cmd_client_api_access_set_owner(
     *,
     agent_id: str,
@@ -4176,6 +4186,19 @@ def main(argv: list[str] | None = None) -> None:
     client_api_access_get_parser.add_argument("agent_id", help="Target agent id.")
     client_api_access_get_parser.add_argument("--user-id", default="ppx-client-user", help="Requester principal id.")
     client_api_access_get_parser.add_argument(
+        "--json",
+        dest="output_json",
+        action="store_true",
+        help="Emit machine-readable JSON.",
+    )
+    client_api_access_audit_parser = client_api_access_subparsers.add_parser(
+        "audit",
+        help="Show explicit-memory access audit rows for one agent.",
+    )
+    client_api_access_audit_parser.add_argument("agent_id", help="Target agent id.")
+    client_api_access_audit_parser.add_argument("--user-id", default="ppx-client-user", help="Requester principal id.")
+    client_api_access_audit_parser.add_argument("--limit", type=int, default=50, help="Maximum rows to return.")
+    client_api_access_audit_parser.add_argument(
         "--json",
         dest="output_json",
         action="store_true",
@@ -4485,6 +4508,13 @@ def main(argv: list[str] | None = None) -> None:
                 code = _cmd_client_api_access_get(
                     agent_id=args.agent_id,
                     user_id=args.user_id,
+                    output_json=args.output_json,
+                )
+            elif args.client_api_access_command == "audit":
+                code = _cmd_client_api_access_audit(
+                    agent_id=args.agent_id,
+                    user_id=args.user_id,
+                    limit=args.limit,
                     output_json=args.output_json,
                 )
             elif args.client_api_access_command == "set-owner":
